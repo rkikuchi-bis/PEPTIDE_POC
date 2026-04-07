@@ -29,6 +29,7 @@ def render_results(result_df, pdb_summary=None):
             "sequence",
             # ── 統合スコア ──
             "final_score",
+            "ml_score",
             "rescoring_score",
             "gen_score",
             "property_score",
@@ -74,6 +75,9 @@ def render_results(result_df, pdb_summary=None):
 
             st.markdown(f"**Sequence:** `{row['sequence']}`")
             st.write(f"- Final score: {row['final_score']:.3f}")
+            if "ml_score" in row.index and pd.notna(row["ml_score"]):
+                ml_label = "ML binding probability (Phase A-2)"
+                st.write(f"- {ml_label}: {row['ml_score']:.3f}")
             st.write(f"- Rescoring score: {row['rescoring_score']:.3f}")
             st.write(f"- Generated score: {row['gen_score']:.3f}")
             st.write(f"- Property score: {row['property_score']:.3f}")

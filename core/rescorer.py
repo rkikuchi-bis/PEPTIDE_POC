@@ -19,6 +19,8 @@ from typing import Dict
 import pandas as pd
 from Bio.SeqUtils.ProtParam import ProteinAnalysis
 
+from core.ml_scorer import is_model_available, score_with_ml
+
 # ProteinAnalysis が受け付ける20種標準アミノ酸
 _STANDARD_AA = set("ACDEFGHIKLMNPQRSTVWY")
 
@@ -313,11 +315,27 @@ def rescore_candidates(
     out["rescoring_score"] = rescoring_scores
     out["rescoring_notes"] = notes_list
 
-    # 最終統合スコア（重みは旧実装と同じ）
-    out["final_score"] = (
-        0.30 * out["gen_score"]
-        + 0.30 * out["property_score"]
-        + 0.40 * out["rescoring_score"]
-    ).round(4)
+    # ML スコア（モデル未学習の場合は 0.5 の中立値）
+    ml_available = is_model_available()
+    out["ml_score"] = [
+        round(score_with_ml(seq), 4) for seq in out["sequence"]
+    ]
+    out["ml_score_available"] = ml_available
+
+    # 最終統合スコア
+    # ML モデルが利用可能な場合は ml_score を加味した重みに変更
+    if ml_available:
+        out["final_score"] = (
+            0.20 * out["gen_score"]
+            + 0.20 * out["property_score"]
+            + 0.30 * out["rescoring_score"]
+            + 0.30 * out["ml_score"]
+        ).round(4)
+    else:
+        out["final_score"] = (
+            0.30 * out["gen_score"]
+            + 0.30 * out["property_score"]
+            + 0.40 * out["rescoring_score"]
+        ).round(4)
 
     return out

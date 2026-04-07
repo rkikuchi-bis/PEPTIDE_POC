@@ -38,6 +38,20 @@
 
 ---
 
+### Phase A-2: ML スコアリング
+- `scripts/prepare_dataset.py` — RCSB PDB REST API（v2）からペプチド陽性例485件取得、ランダム陰性例500件生成
+  - `data/peptide_dataset.csv` に保存（特徴量: length, net_charge, avg_hydrophobicity + Phase A-1 全特徴量）
+- `scripts/train_classifier.py` — RandomForest / LightGBM の 5-fold CV 比較
+  - LightGBM が最良（CV AUC=0.891、Holdout AUC=0.881、Accuracy=81%）
+  - `models/peptide_classifier.joblib` に保存
+- `core/ml_scorer.py` — `score_with_ml(sequence) -> float`（joblib ロード・キャッシュ付き）
+- `core/rescorer.py` — `ml_score` を統合、`final_score` の重みを自動切替
+  - ML あり: gen×0.20 + property×0.20 + rescoring×0.30 + ml×0.30
+  - ML なし: gen×0.30 + property×0.30 + rescoring×0.40（後方互換）
+- `ui/results.py` — テーブルと詳細パネルに `ml_score` / `ML binding probability` を追加
+
+---
+
 ## Issues
 
 - なし（現時点で既知のバグなし）
@@ -45,13 +59,6 @@
 ---
 
 ## Next Steps
-
-### 直近（Phase A-2）
-1. PepBDB からタンパク質結合ペプチドデータを取得
-2. Phase A-1の特徴量で特徴ベクトル化
-3. RandomForest/LightGBM で二値分類モデルを学習
-4. `core/ml_scorer.py` を新設、`core/pipeline.py` に組み込み
-5. 学習済みモデルを `models/peptide_classifier.joblib` として保存
 
 ### その後（Phase B-1）
 - AutoDock Vina Python バインディングによるドッキングスコア追加

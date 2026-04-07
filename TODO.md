@@ -1,29 +1,25 @@
 # TODO
-最終更新: 2026-04-08
+最終更新: 2026-04-08（Phase A-2 完了）
 
 ---
 
 ## 短期タスク（Phase A-2）
 
-- [ ] PepBDB データセットをダウンロード・前処理する
-      URL: http://huanglab.phys.hust.edu.cn/pepbdb/
+- [ ] RCSB PDB REST API からペプチド複合体データを取得・前処理する（Option B）
+      → ペプチド含む複合体エントリを検索（配列のみ取得、構造不要）
       → 結合ペプチド配列（陽性例）を抽出
       → ランダム生成配列（陰性例）を作成
       → Phase A-1 の特徴量で特徴ベクトル化
 
-- [ ] `scripts/train_classifier.py` を作成（学習スクリプト）
-      → RandomForest または LightGBM で二値分類
-      → 評価: AUC-ROC, Precision/Recall
-      → モデルを `models/peptide_classifier.joblib` に保存
+- [ ] 【将来検討】PepBDB 全件ダウンロードによる高精度学習（Option A）
+      URL: http://huanglab.phys.hust.edu.cn/pepbdb/db/download/pepbdb-20200318.tgz
+      サイズ: 659MB、PDB構造ファイルから配列抽出が必要
+      → Option B のモデル精度が不十分な場合に採用を検討する
 
-- [ ] `core/ml_scorer.py` を新設
-      → `score_with_ml(sequence: str) -> float` を実装
-      → モデルをロードしてスコアを返す
-
-- [ ] `core/rescorer.py` に ml_score を統合
-      → `final_score` の重みを調整（ml_score追加分）
-
-- [ ] `ui/results.py` に ml_score カラムを追加表示
+- [x] `scripts/train_classifier.py` を作成（LightGBM、CV AUC=0.891）
+- [x] `core/ml_scorer.py` を新設（`score_with_ml` 実装）
+- [x] `core/rescorer.py` に ml_score を統合
+- [x] `ui/results.py` に ml_score カラムを追加表示
 
 ---
 
@@ -53,3 +49,4 @@
 - [x] Phase A-1: BioPython ProtParam スコアリング
 - [x] GitHub push・Mac環境への移行
 - [x] CLAUDE.md / CONTEXT.md / TODO.md / prompts/ の整備
+- [x] Phase A-2: ML スコアリング（LightGBM、AUC=0.891）
