@@ -1,0 +1,18 @@
+You are working on a peptide discovery app called PEPTIDE_POC.
+The repository is at: https://github.com/rkikuchi-bis/PEPTIDE_POC
+
+[Project Context]
+--- paste CLAUDE.md contents here ---
+
+[Current State]
+--- paste CONTEXT.md contents here ---
+
+[Task]
+Continue development. First, read the following files to confirm the current state:
+- CLAUDE.md
+- CONTEXT.md
+- TODO.md
+- core/rescorer.py
+- core/pipeline.py
+
+Then propose the next concrete steps based on TODO.md.
