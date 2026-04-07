@@ -33,3 +33,9 @@ dist/
 
 # Editor
 .vscode/
+
+# Generated outputs
+outputs/
+
+# Claude Code memory
+.claude/
