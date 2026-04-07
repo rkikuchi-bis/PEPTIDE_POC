@@ -51,6 +51,8 @@ def render_results(result_df, pdb_summary=None):
             "hydrophobic_match_score",
             "stability_score",
             "complexity_score",
+            # ── Phase B-1: ドッキング ──
+            "docking_score",
             # ── 多様性 ──
             "diversity_kept",
             "diversity_min_distance",
@@ -75,6 +77,8 @@ def render_results(result_df, pdb_summary=None):
 
             st.markdown(f"**Sequence:** `{row['sequence']}`")
             st.write(f"- Final score: {row['final_score']:.3f}")
+            if "docking_score" in row.index and pd.notna(row["docking_score"]):
+                st.write(f"- Docking score (Phase B-1): {row['docking_score']:.2f} kcal/mol")
             if "ml_score" in row.index and pd.notna(row["ml_score"]):
                 ml_label = "ML binding probability (Phase A-2)"
                 st.write(f"- {ml_label}: {row['ml_score']:.3f}")

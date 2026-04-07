@@ -58,12 +58,27 @@
 
 ---
 
+### Phase B-1: AutoDock Vina ドッキング（実装中）
+- `bin/vina` — mac_aarch64 バイナリをダウンロード済み（Python binding は M4 非対応）
+- 追加依存: `rdkit`, `meeko>=0.7.1`, `gemmi`
+- `core/docking.py` — ペプチド → PDBQT → Vina 実行 → スコア返却
+  - `_sequence_to_pdbqt()` — RDKit `MolFromSequence` + meeko `PDBQTWriterLegacy`
+  - `prepare_receptor_pdbqt()` — 受容体 PDB → PDBQT（キャッシュ付き）
+  - `dock_top_candidates()` — 上位 N 候補に一括ドッキング
+- `ui/results.py` — `docking_score` カラム・詳細パネルに追加
+- 依存ツール: `obabel`（Homebrew）、`rdkit`、`gemmi`
+- 受容体変換: HETATM 除去 → `obabel -xr`（剛体 PDBQT）
+- リガンド変換: RDKit 3D生成 → `obabel -xr` → ROOT/ENDROOT/TORSDOF 0 付加
+- ドッキング: Vina バイナリ（subprocess）→ スコア [kcal/mol] パース
+- **制約**: 7残基以上は剛体ドッキング（スコアが正値になることあり）。相対ランキングには利用可能。
+- エンドツーエンドテスト完了（1HSG + 5候補）
+
 ## Next Steps
 
-### その後（Phase B-1）
-- AutoDock Vina Python バインディングによるドッキングスコア追加
-- 上位候補のみ（10〜20件）に実行
-
-### 将来（Phase B-2）
+### 次（Phase B-2）
 - ProteinMPNN による配列逆設計（M4 MPS対応）
-- `device = torch.device("mps")` で動作確認済みのコードを書く予定
+- `device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")`
+
+### Phase B-1+ 改善案（任意）
+- 短鎖（≤5残基）は柔軟ドッキング・長鎖は剛体の自動切り替え
+- obabel 依存削減（meeko が arm64 対応次第）

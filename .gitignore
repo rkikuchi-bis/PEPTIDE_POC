@@ -37,5 +37,8 @@ dist/
 # Generated outputs
 outputs/
 
+# AutoDock Vina binary
+bin/
+
 # Claude Code memory
 .claude/

@@ -1,3 +1,6 @@
+import os
+import tempfile
+
 import streamlit as st
 
 from core.pipeline import run_pipeline
@@ -22,6 +25,7 @@ st.caption(
 # =========================
 defaults = {
     "result_df": None,
+    "docking_done": False,
     "rcsb_results": [],
     "rcsb_selected_index": 0,
     "downloaded_structure_bytes": None,
@@ -75,7 +79,58 @@ if params["run_button"]:
             target_name=params["target_name"],
         )
         st.session_state["result_df"] = result_df
+        st.session_state["docking_done"] = False
         st.success(f"Done. Saved CSV to: {saved_path}")
+
+
+# =========================
+# Docking (Phase B-1)
+# =========================
+if (
+    params.get("enable_docking")
+    and params.get("docking_params") is not None
+    and st.session_state["result_df"] is not None
+    and not st.session_state["docking_done"]
+):
+    dp = params["docking_params"]
+    structure_bytes = params.get("structure_bytes")
+    structure_filename = params.get("structure_filename", "receptor.pdb")
+
+    if structure_bytes is not None:
+        if st.button("Run Docking on top candidates", type="secondary"):
+            from core.docking import dock_top_candidates, prepare_receptor_pdbqt
+
+            with st.spinner(
+                f"Preparing receptor and docking top {dp['top_n']} candidates "
+                f"(exhaustiveness={dp['exhaustiveness']})..."
+            ):
+                # 構造バイトを一時ファイルに書き出し
+                suffix = "." + structure_filename.rsplit(".", 1)[-1]
+                with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
+                    tmp.write(structure_bytes)
+                    tmp_pdb_path = tmp.name
+
+                try:
+                    receptor_pdbqt = prepare_receptor_pdbqt(tmp_pdb_path)
+                    if receptor_pdbqt is None:
+                        st.error("受容体 PDBQT の準備に失敗しました。")
+                    else:
+                        result_df = dock_top_candidates(
+                            st.session_state["result_df"],
+                            receptor_pdbqt_path=receptor_pdbqt,
+                            box_center=dp["box_center"],
+                            box_size=dp["box_size"],
+                            top_n=dp["top_n"],
+                            exhaustiveness=dp["exhaustiveness"],
+                        )
+                        st.session_state["result_df"] = result_df
+                        st.session_state["docking_done"] = True
+                        docked = result_df["docking_score"].notna().sum()
+                        st.success(f"Docking complete. {docked} candidates scored.")
+                finally:
+                    os.unlink(tmp_pdb_path)
+    else:
+        st.info("ドッキングには構造ファイルのアップロードが必要です。")
 
 
 # =========================

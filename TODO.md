@@ -1,15 +1,13 @@
 # TODO
-最終更新: 2026-04-08（Phase A-2 完了）
+最終更新: 2026-04-08（Phase B-1 完了）
 
 ---
 
-## 短期タスク（Phase A-2）
+## 完了済み短期タスク（Phase A-2）
 
-- [ ] RCSB PDB REST API からペプチド複合体データを取得・前処理する（Option B）
-      → ペプチド含む複合体エントリを検索（配列のみ取得、構造不要）
-      → 結合ペプチド配列（陽性例）を抽出
-      → ランダム生成配列（陰性例）を作成
-      → Phase A-1 の特徴量で特徴ベクトル化
+- [x] RCSB PDB REST API からペプチド複合体データを取得・前処理する（Option B 実装済み）
+      → `scripts/prepare_dataset.py` で陽性485件・陰性500件取得
+      → `data/peptide_dataset.csv` に保存
 
 - [ ] 【将来検討】PepBDB 全件ダウンロードによる高精度学習（Option A）
       URL: http://huanglab.phys.hust.edu.cn/pepbdb/db/download/pepbdb-20200318.tgz
@@ -25,10 +23,30 @@
 
 ## 中期タスク（Phase B-1）
 
-- [ ] `vina` (Python バインディング) の動作確認（Mac M4対応）
-- [ ] `meeko` によるペプチド→PDBQT変換の実装
-- [ ] `core/docking.py` を新設
-- [ ] 上位10〜20候補のみドッキング実行するロジック
+- [x] `vina` バイナリ (mac_aarch64) を `bin/vina` にダウンロード（Python bindingはM4非対応）
+- [x] `gemmi`, `rdkit`, `meeko` のインストール
+- [x] `core/docking.py` を新設
+      - `is_vina_available()` — バイナリ存在チェック
+      - `_sequence_to_pdbqt()` — RDKit + meeko でペプチド → PDBQT
+      - `prepare_receptor_pdbqt()` — PDB → PDBQT（キャッシュ付き）
+      - `dock_peptide()` — 単一ペプチドドッキング
+      - `dock_top_candidates()` — 上位 N 候補に一括実行
+- [x] `ui/results.py` に `docking_score` カラムを追加
+- [x] `ui/sidebar.py` にドッキング設定UI（ボックス中心自動計算・サイズ・top_n・exhaustiveness）を追加
+- [x] `app.py` に "Run Docking" ボタンを追加（pipeline とは独立したオプション実行）
+- [x] 受容体 PDBQT 準備の動作検証（1HSG で確認済み）
+      - obabel による受容体 PDBQT 変換（HETATM除去 → -xr オプション）
+      - obabel によるリガンド PDBQT 変換（剛体: ROOT/ENDROOT/TORSDOF 0 付加）
+      - dock_top_candidates のエンドツーエンドテスト完了
+      - 注意: 7残基以上は剛体ドッキング（相対ランキング用途、絶対値は不正確）
+             4残基以下は柔軟ドッキングで負のスコアが得られる
+
+## Phase B-1 完了 ✅
+
+## 今後の改善案（Phase B-1+）
+
+- [ ] 短鎖ペプチド（≤5残基）のみ柔軟ドッキング、長鎖は剛体の自動切り替え
+- [ ] obabel 依存を減らす（meeko が将来 arm64 対応した場合に置き換え）
 
 ---
 

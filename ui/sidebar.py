@@ -301,6 +301,58 @@ def render_sidebar() -> dict:
             help="例: KLAKLAKKLAKLAK",
         )
 
+        st.markdown("### Docking (Phase B-1)")
+        from core.docking import is_vina_available, compute_pocket_center
+        vina_ok = is_vina_available()
+
+        if not vina_ok:
+            st.caption("vina バイナリが見つかりません（bin/vina）")
+            enable_docking = False
+            docking_params = None
+        else:
+            enable_docking = st.checkbox("Enable AutoDock Vina docking", value=False)
+            if enable_docking:
+                # ポケット中心を自動計算（構造が読み込まれている場合）
+                auto_center = None
+                if uploaded_structure is not None and pdb_summary is not None:
+                    auto_center = compute_pocket_center(
+                        uploaded_structure.getvalue(),
+                        uploaded_structure.name,
+                        pdb_summary,
+                    )
+
+                default_cx = auto_center[0] if auto_center else 0.0
+                default_cy = auto_center[1] if auto_center else 0.0
+                default_cz = auto_center[2] if auto_center else 0.0
+
+                if auto_center:
+                    st.caption(f"Auto-computed pocket center: ({default_cx}, {default_cy}, {default_cz})")
+
+                cx = st.number_input("Box center X [Å]", value=default_cx, step=1.0, format="%.2f")
+                cy = st.number_input("Box center Y [Å]", value=default_cy, step=1.0, format="%.2f")
+                cz = st.number_input("Box center Z [Å]", value=default_cz, step=1.0, format="%.2f")
+
+                box_sx = st.slider("Box size X [Å]", 10, 40, 20)
+                box_sy = st.slider("Box size Y [Å]", 10, 40, 20)
+                box_sz = st.slider("Box size Z [Å]", 10, 40, 20)
+
+                docking_top_n = st.slider("Top N candidates to dock", 5, 30, 10)
+                docking_exhaustiveness = st.select_slider(
+                    "Exhaustiveness",
+                    options=[4, 8, 16, 32],
+                    value=8,
+                    help="高いほど精度が上がるが時間がかかる",
+                )
+
+                docking_params = {
+                    "box_center": (cx, cy, cz),
+                    "box_size": (float(box_sx), float(box_sy), float(box_sz)),
+                    "top_n": docking_top_n,
+                    "exhaustiveness": docking_exhaustiveness,
+                }
+            else:
+                docking_params = None
+
         run_button = st.button("Generate and Filter", type="primary")
 
         if pdb_parse_error is not None:
@@ -343,6 +395,8 @@ def render_sidebar() -> dict:
 
     return {
         "target_name": target_name,
+        "enable_docking": enable_docking,
+        "docking_params": docking_params,
         "num_candidates": num_candidates,
         "min_len": min_len,
         "max_len": max_len,
