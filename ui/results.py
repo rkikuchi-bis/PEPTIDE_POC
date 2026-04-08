@@ -30,6 +30,7 @@ def render_results(result_df, pdb_summary=None):
             # ── 統合スコア ──
             "final_score",
             "ml_score",
+            "proteinmpnn_score",
             "rescoring_score",
             "gen_score",
             "property_score",
@@ -80,8 +81,14 @@ def render_results(result_df, pdb_summary=None):
             if "docking_score" in row.index and pd.notna(row["docking_score"]):
                 st.write(f"- Docking score (Phase B-1): {row['docking_score']:.2f} kcal/mol")
             if "ml_score" in row.index and pd.notna(row["ml_score"]):
-                ml_label = "ML binding probability (Phase A-2)"
-                st.write(f"- {ml_label}: {row['ml_score']:.3f}")
+                st.write(f"- ML binding probability (Phase A-2): {row['ml_score']:.3f}")
+            if "proteinmpnn_score" in row.index and pd.notna(row["proteinmpnn_score"]):
+                receptor_conditioned = (
+                    "proteinmpnn_receptor_conditioned" in row.index
+                    and bool(row["proteinmpnn_receptor_conditioned"])
+                )
+                phase_label = "Phase B-2+ (receptor-conditioned)" if receptor_conditioned else "Phase B-2"
+                st.write(f"- ProteinMPNN designability score ({phase_label}): {row['proteinmpnn_score']:.3f}")
             st.write(f"- Rescoring score: {row['rescoring_score']:.3f}")
             st.write(f"- Generated score: {row['gen_score']:.3f}")
             st.write(f"- Property score: {row['property_score']:.3f}")

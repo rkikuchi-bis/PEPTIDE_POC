@@ -335,6 +335,83 @@ def summarize_structure_region(
     return structure, summary
 
 
+def get_pocket_ca_centroid(
+    structure,
+    pdb_summary: Dict,
+) -> tuple[float, float, float] | None:
+    """
+    pdb_summary に基づいてポケット残基の Cα 重心座標を返す。
+
+    Returns:
+        (x, y, z) または None（ポケット残基が見つからない場合）
+    """
+    source_mode = pdb_summary.get("source_mode", "manual_region")
+    selected_chain = pdb_summary.get("selected_chain")
+    residue_start = pdb_summary.get("residue_start")
+    residue_end = pdb_summary.get("residue_end")
+    ligand_names = pdb_summary.get("ligand_names", [])
+    search_radius = pdb_summary.get("search_radius", 6.0)
+
+    ca_coords = []
+
+    if source_mode == "ligand_neighborhood" and ligand_names:
+        # リガンド近傍モード: NeighborSearch で残基を取得
+        ligand_resname = ligand_names[0]
+        ligand_residue = None
+        for model in structure:
+            for chain in model:
+                for residue in chain:
+                    if _safe_residue_name(residue) == ligand_resname and _is_ligand_residue(residue):
+                        ligand_residue = residue
+                        break
+                if ligand_residue:
+                    break
+            if ligand_residue:
+                break
+
+        if ligand_residue is not None:
+            ligand_atoms = list(ligand_residue.get_atoms())
+            all_atoms = list(structure.get_atoms())
+            ns = NeighborSearch(all_atoms)
+            seen = set()
+            for atom in ligand_atoms:
+                for close_atom in ns.search(atom.coord, search_radius, level="A"):
+                    residue = close_atom.get_parent()
+                    if residue is ligand_residue:
+                        continue
+                    if not _is_standard_aa_residue(residue):
+                        continue
+                    key = _residue_key(residue)
+                    if key in seen:
+                        continue
+                    seen.add(key)
+                    if "CA" in residue:
+                        ca_coords.append(residue["CA"].coord)
+    else:
+        # Manual region モード
+        for model in structure:
+            for chain in model:
+                if selected_chain is not None and chain.id != selected_chain:
+                    continue
+                for residue in chain:
+                    if not _is_standard_aa_residue(residue):
+                        continue
+                    resseq = _get_resseq(residue)
+                    if residue_start is not None and resseq < residue_start:
+                        continue
+                    if residue_end is not None and resseq > residue_end:
+                        continue
+                    if "CA" in residue:
+                        ca_coords.append(residue["CA"].coord)
+
+    if not ca_coords:
+        return None
+
+    import numpy as np
+    centroid = np.mean(ca_coords, axis=0)
+    return (float(centroid[0]), float(centroid[1]), float(centroid[2]))
+
+
 def summarize_structure_ligand_pocket(
     file_bytes: bytes,
     filename: str,

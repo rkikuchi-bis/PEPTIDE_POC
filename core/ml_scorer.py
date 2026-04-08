@@ -8,8 +8,14 @@ Streamlit に依存しない純粋な Python モジュール。
 """
 from __future__ import annotations
 
+import os
 import warnings
 from pathlib import Path
+
+# PyTorch と LightGBM の OpenMP 競合を回避するため、
+# LightGBM をシングルスレッド動作に制限する
+os.environ.setdefault("OMP_NUM_THREADS", "1")
+os.environ.setdefault("LIGHTGBM_NUM_THREADS", "1")
 
 import joblib
 import numpy as np

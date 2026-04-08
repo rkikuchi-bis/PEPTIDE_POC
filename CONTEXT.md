@@ -1,5 +1,5 @@
 # Current State
-最終更新: 2026-04-08
+最終更新: 2026-04-08（Phase B-2+ 完了: 受容体条件付き ProteinMPNN）
 
 ---
 
@@ -73,12 +73,46 @@
 - **制約**: 7残基以上は剛体ドッキング（スコアが正値になることあり）。相対ランキングには利用可能。
 - エンドツーエンドテスト完了（1HSG + 5候補）
 
-## Next Steps
+---
 
-### 次（Phase B-2）
-- ProteinMPNN による配列逆設計（M4 MPS対応）
-- `device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")`
+### Phase B-2: ProteinMPNN スコアリング（実装完了）
+- `torch==2.11.0` インストール済み（MPS 動作確認済み）
+- `models/proteinmpnn/v_48_020.pt` — vanilla_model_weights (6.4MB) ダウンロード済み
+- `models/proteinmpnn/protein_mpnn_utils.py` — モデルクラス
+- `scripts/mpnn_scorer.py` — スタンドアロンスコアラー（LightGBM との OpenMP 競合を回避するためサブプロセスとして実行）
+- `core/proteinmpnn.py` — `score_sequences_batch()`, `score_with_proteinmpnn()` API
+- `core/rescorer.py` — `proteinmpnn_score` を統合、`final_score` の重み自動切替
+  - ML + MPNN あり: gen×0.15 + property×0.15 + rescoring×0.25 + ml×0.25 + mpnn×0.20
+  - ML あり: gen×0.20 + property×0.20 + rescoring×0.30 + ml×0.30
+  - なし: gen×0.30 + property×0.30 + rescoring×0.40
+- `ui/results.py` — `proteinmpnn_score` カラム・詳細パネルに追加
+- **設計**: 理想αヘリックス骨格（rise=1.5Å, radius=2.3Å, rotation=100°/residue）の対数尤度スコア
+- **制約**: 構造フリーのヒューリスティック。相対ランキング用途（絶対値の科学的解釈は限定的）
+- **OpenMP 競合**: LightGBM + PyTorch の競合は mpnn_scorer.py をサブプロセス実行することで解決
+
+---
+
+### Phase B-2+: 受容体条件付き ProteinMPNN スコアリング（実装完了）
+- `scripts/mpnn_scorer_receptor.py` — 受容体バックボーン + ペプチド理想ヘリックスを結合
+  - 受容体 (chain_M=0): グラフ上の固定コンテキスト（スコア対象外）
+  - ペプチド (chain_M=1): pocket centroid に配置、NLL をスコアに変換
+  - 受容体が大きい場合（>200残基）は centroid 近傍の上位 200 残基のみ使用
+- `core/pdb_utils.py` — `get_pocket_ca_centroid(structure, pdb_summary)` を追加
+  - Manual region / Ligand neighborhood 両モードに対応
+- `core/proteinmpnn.py` — `score_sequences_with_receptor()` を追加
+  - mmCIF は PDB 変換して渡す（BioPython PDBIO 経由）
+- `core/rescorer.py` — `rescore_candidates()` に `structure_text`, `file_format`, `pocket_centroid` 引数を追加
+  - 3 引数が揃えば受容体条件付きモード、揃わなければ構造フリーモード（B-2）へ自動フォールバック
+  - `proteinmpnn_receptor_conditioned` カラムでどちらのモードかを記録
+- `core/pipeline.py` — 上記 3 引数を `rescore_candidates()` に伝搬
+- `app.py` — Run ボタン時に構造パース + `get_pocket_ca_centroid()` を呼び出し、`run_pipeline()` に渡す
+
+## Next Steps
 
 ### Phase B-1+ 改善案（任意）
 - 短鎖（≤5残基）は柔軟ドッキング・長鎖は剛体の自動切り替え
 - obabel 依存削減（meeko が arm64 対応次第）
+
+### Phase B-2++ 改善案（任意）
+- PepFold による初期骨格生成 → ProteinMPNN への入力に使用（ダミーヘリックスより精度向上）
+- AlphaFold2-Multimer による結合構造再予測

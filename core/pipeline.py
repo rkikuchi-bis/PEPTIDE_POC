@@ -28,6 +28,9 @@ def run_pipeline(
     max_diverse_candidates: int,
     known_sequences: list,
     target_name: str,
+    structure_text: str | None = None,
+    file_format: str | None = None,
+    pocket_centroid: tuple[float, float, float] | None = None,
 ) -> tuple[pd.DataFrame, str]:
     candidates = generate_candidates(
         n=num_candidates,
@@ -57,6 +60,9 @@ def run_pipeline(
         pocket_hydrophobicity=pocket_hydrophobicity,
         preferred_len_min=preferred_len_min,
         preferred_len_max=preferred_len_max,
+        structure_text=structure_text,
+        file_format=file_format,
+        pocket_centroid=pocket_centroid,
     )
 
     rescored_df = rescored_df.sort_values(

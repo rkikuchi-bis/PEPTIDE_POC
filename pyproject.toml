@@ -15,6 +15,7 @@ dependencies = [
     "meeko>=0.7.1",
     "rdkit>=2026.3.1",
     "gemmi>=0.7.5",
+    "torch>=2.11.0",
 ]
 
 [tool.uv]

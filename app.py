@@ -4,6 +4,7 @@ import tempfile
 import streamlit as st
 
 from core.pipeline import run_pipeline
+from core.pdb_utils import get_pocket_ca_centroid
 from ui.sidebar import render_sidebar
 from ui.results import render_results
 from ui.structure_viewer import render_viewer_section
@@ -60,6 +61,26 @@ render_viewer_section(
 # =========================
 if params["run_button"]:
     with st.spinner("Generating candidates..."):
+        # 受容体構造を条件付けとした ProteinMPNN スコアリング用に情報を準備
+        structure_bytes = params.get("structure_bytes")
+        structure_filename = params.get("structure_filename", "")
+        pdb_summary = params.get("pdb_summary")
+        structure_text = None
+        file_format = None
+        pocket_centroid = None
+
+        if structure_bytes is not None and pdb_summary is not None:
+            from core.pdb_utils import detect_structure_format, parse_structure_text
+            try:
+                file_format = detect_structure_format(structure_filename)
+                structure_text = structure_bytes.decode("utf-8", errors="ignore")
+                structure_obj = parse_structure_text(structure_text, file_format=file_format)
+                pocket_centroid = get_pocket_ca_centroid(structure_obj, pdb_summary)
+            except Exception:
+                structure_text = None
+                file_format = None
+                pocket_centroid = None
+
         result_df, saved_path = run_pipeline(
             num_candidates=params["num_candidates"],
             min_len=params["min_len"],
@@ -77,10 +98,23 @@ if params["run_button"]:
             max_diverse_candidates=params["max_diverse_candidates"],
             known_sequences=params["known_sequences"],
             target_name=params["target_name"],
+            structure_text=structure_text,
+            file_format=file_format,
+            pocket_centroid=pocket_centroid,
         )
         st.session_state["result_df"] = result_df
         st.session_state["docking_done"] = False
-        st.success(f"Done. Saved CSV to: {saved_path}")
+
+        # 受容体条件付きスコアリングの使用状況を表示
+        if pocket_centroid is not None:
+            cx, cy, cz = pocket_centroid
+            st.success(
+                f"Done. Receptor-conditioned ProteinMPNN enabled "
+                f"(centroid: {cx:.1f}, {cy:.1f}, {cz:.1f}). "
+                f"Saved CSV to: {saved_path}"
+            )
+        else:
+            st.success(f"Done. Saved CSV to: {saved_path}")
 
 
 # =========================

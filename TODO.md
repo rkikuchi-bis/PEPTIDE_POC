@@ -1,5 +1,5 @@
 # TODO
-最終更新: 2026-04-08（Phase B-1 完了）
+最終更新: 2026-04-08（Phase B-2+ 完了）
 
 ---
 
@@ -50,12 +50,19 @@
 
 ---
 
-## 長期タスク（Phase B-2）
+## Phase B-2 完了 ✅
 
-- [ ] ProteinMPNN の M4 MPS 対応確認
-      → `device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")`
-- [ ] PepFold による初期骨格生成パイプライン
-- [ ] ProteinMPNN → 配列確率分布 → スコア変換
+## Phase B-2+ 完了 ✅
+
+- [x] 受容体構造を条件付けとした ProteinMPNN スコアリング
+      （受容体 PDB + ペプチドダミー座標を結合 → より科学的なスコア）
+      → `scripts/mpnn_scorer_receptor.py`, `core/pdb_utils.get_pocket_ca_centroid()`,
+         `core/proteinmpnn.score_sequences_with_receptor()` 実装済み
+      → 構造未指定時は B-2（構造フリー）に自動フォールバック
+
+## 長期タスク（Phase B-2++）
+
+- [ ] PepFold による初期骨格生成パイプライン（ダミーヘリックスを実骨格に置き換え）
 - [ ] AlphaFold2-Multimer による結合構造再予測
 
 ---
