@@ -43,9 +43,11 @@
 
 ## Phase B-1 完了 ✅
 
-## 今後の改善案（Phase B-1+）
+## Phase B-1+ 完了 ✅
 
-- [ ] 短鎖ペプチド（≤5残基）のみ柔軟ドッキング、長鎖は剛体の自動切り替え
+- [x] 短鎖ペプチド（≤5残基）のみ柔軟ドッキング、長鎖は剛体の自動切り替え
+      → `core/docking.py`: `FLEXIBLE_DOCKING_MAX_LENGTH=5`、`dock_peptide(flexible=None)` で自動判定
+      → `docking_mode` カラム追加、詳細パネルに flexible/rigid を表示
 - [ ] obabel 依存を減らす（meeko が将来 arm64 対応した場合に置き換え）
 
 ---

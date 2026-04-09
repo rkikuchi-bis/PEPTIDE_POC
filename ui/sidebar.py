@@ -72,9 +72,9 @@ def render_sidebar() -> dict:
 
             search_col1, search_col2 = st.columns([1, 1])
             with search_col1:
-                search_button = st.button("Search RCSB", key="search_rcsb_button", use_container_width=True)
+                search_button = st.button("Search RCSB", key="search_rcsb_button", width="stretch")
             with search_col2:
-                clear_button = st.button("Clear search", key="clear_rcsb_button", use_container_width=True)
+                clear_button = st.button("Clear search", key="clear_rcsb_button", width="stretch")
 
             if clear_button:
                 st.session_state["rcsb_results"] = []
@@ -122,7 +122,7 @@ def render_sidebar() -> dict:
                     f"domain={selected_record.get('domain_score', '-')}"
                 )
 
-                if st.button("Use selected structure", key="use_selected_rcsb_structure", use_container_width=True):
+                if st.button("Use selected structure", key="use_selected_rcsb_structure", width="stretch"):
                     try:
                         file_bytes, filename = download_rcsb_mmcif(selected_record["pdb_id"])
                         st.session_state["downloaded_structure_bytes"] = file_bytes

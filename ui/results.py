@@ -67,7 +67,7 @@ def render_results(result_df, pdb_summary=None):
 
         st.dataframe(
             result_df[display_cols],
-            use_container_width=True,
+            width="stretch",
             height=500,
         )
 
@@ -79,7 +79,8 @@ def render_results(result_df, pdb_summary=None):
             st.markdown(f"**Sequence:** `{row['sequence']}`")
             st.write(f"- Final score: {row['final_score']:.3f}")
             if "docking_score" in row.index and pd.notna(row["docking_score"]):
-                st.write(f"- Docking score (Phase B-1): {row['docking_score']:.2f} kcal/mol")
+                mode = row.get("docking_mode", "rigid") if "docking_mode" in row.index else "rigid"
+                st.write(f"- Docking score (Phase B-1, {mode}): {row['docking_score']:.2f} kcal/mol")
             if "ml_score" in row.index and pd.notna(row["ml_score"]):
                 st.write(f"- ML binding probability (Phase A-2): {row['ml_score']:.3f}")
             if "proteinmpnn_score" in row.index and pd.notna(row["proteinmpnn_score"]):

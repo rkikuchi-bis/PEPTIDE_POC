@@ -1,5 +1,5 @@
 # Current State
-最終更新: 2026-04-09（Phase B-2++ 動作確認完了: ESMFold ローカル推論 + diversity 後再スコアリング）
+最終更新: 2026-04-09（Phase B-1+ 完了: 短鎖/長鎖ドッキング自動切り替え、Streamlit 非推奨API修正）
 
 ---
 
@@ -126,10 +126,16 @@
 - **venv パッチ**: trunk.py / esmfold.py（dataclass mutable default）、pretrained.py（openfold 2.x レイヤー名リマップ）
 - **モデルキャッシュ**: `~/.cache/torch/hub/checkpoints/esmfold_3B_v1.pt`（約2GB）
 
+### Phase B-1+: 短鎖/長鎖ドッキング自動切り替え（完了）
+- `core/docking.py` — `FLEXIBLE_DOCKING_MAX_LENGTH=5`（≤5残基 → 柔軟、≥6残基 → 剛体）
+- `dock_peptide(flexible=None)` — None で配列長自動判定、True/False で強制指定
+- `dock_top_candidates()` — `docking_mode` カラム追加
+- `ui/results.py` — 詳細パネルに flexible/rigid を表示
+- Streamlit 非推奨 API 修正: `components.v1.html` → `st.iframe`、`use_container_width` → `width="stretch"`
+
 ## Next Steps
 
-### Phase B-1+ 改善案（任意）
-- 短鎖（≤5残基）は柔軟ドッキング・長鎖は剛体の自動切り替え
+### Phase B-1+ 残件（任意）
 - obabel 依存削減（meeko が arm64 対応次第）
 
 ### Phase B-2+++ 改善案（任意）

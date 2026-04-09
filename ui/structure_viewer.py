@@ -1,5 +1,4 @@
 import streamlit as st
-import streamlit.components.v1 as components
 
 
 # カラーパレット
@@ -101,7 +100,7 @@ def render_structure_viewer(
     view.spin(False)
 
     html = view._make_html()
-    components.html(html, height=height + 15, scrolling=False)
+    st.iframe(html, height=height + 15)
 
 
 def render_viewer_section(

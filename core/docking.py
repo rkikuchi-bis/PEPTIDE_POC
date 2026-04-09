@@ -130,12 +130,16 @@ def is_vina_available() -> bool:
 # リガンド（ペプチド）PDBQT 準備
 # ─────────────────────────────────────────────
 
-def _sequence_to_pdbqt(sequence: str, out_path: str) -> bool:
+def _sequence_to_pdbqt(sequence: str, out_path: str, flexible: bool = False) -> bool:
     """
-    ペプチド配列 → RDKit 3D構造 → obabel 剛体 PDBQT ファイル。
+    ペプチド配列 → RDKit 3D構造 → obabel PDBQT ファイル。
 
-    obabel -xr を使って全結合を剛体として PDBQT 化する。
-    torsion 数が多くなるのを防ぎ Vina が現実的な時間で完了する。
+    flexible=False (デフォルト):
+        obabel -xr で全結合を剛体 PDBQT 化。torsion 数を抑えて高速処理。
+    flexible=True:
+        obabel の標準変換（-xr なし）でtorsion を保持した柔軟 PDBQT を生成。
+        短鎖ペプチド（≤5残基）に適用することでスコアの精度が向上する。
+
     成功時 True、失敗時 False を返す。
     """
     try:
@@ -164,35 +168,46 @@ def _sequence_to_pdbqt(sequence: str, out_path: str) -> bool:
 
         AllChem.MMFFOptimizeMolecule(mol, maxIters=1000)
 
-        # 一時 SDF に書き出してから obabel で剛体 PDBQT に変換
-        # obabel -xr は ATOM 行のみ出力（ROOT/ENDROOT/TORSDOF なし）なので追加する
         with tempfile.TemporaryDirectory() as tmpdir:
             sdf_path = os.path.join(tmpdir, "lig.sdf")
-            rigid_path = os.path.join(tmpdir, "lig_rigid.pdbqt")
             writer = Chem.SDWriter(sdf_path)
             writer.write(mol)
             writer.close()
 
-            r = subprocess.run(
-                ["obabel", sdf_path, "-O", rigid_path, "-xr",
-                 "--partialcharge", "gasteiger"],
-                capture_output=True, text=True, timeout=30,
-            )
-            if r.returncode != 0 or not os.path.exists(rigid_path):
-                return False
+            if flexible:
+                # 柔軟ドッキング: obabel の標準変換で torsion を保持した PDBQT を生成
+                r = subprocess.run(
+                    ["obabel", sdf_path, "-O", out_path,
+                     "--partialcharge", "gasteiger"],
+                    capture_output=True, text=True, timeout=30,
+                )
+                return r.returncode == 0 and os.path.exists(out_path)
+            else:
+                # 剛体ドッキング: -xr で ATOM 行のみ出力 → ROOT/ENDROOT/TORSDOF 0 を手動付加
+                rigid_path = os.path.join(tmpdir, "lig_rigid.pdbqt")
+                r = subprocess.run(
+                    ["obabel", sdf_path, "-O", rigid_path, "-xr",
+                     "--partialcharge", "gasteiger"],
+                    capture_output=True, text=True, timeout=30,
+                )
+                if r.returncode != 0 or not os.path.exists(rigid_path):
+                    return False
 
-            # ROOT/ENDROOT/TORSDOF 0 を付加して Vina が受け付ける形式に整形
-            with open(rigid_path) as f:
-                lines = f.readlines()
-            remark_lines = [l for l in lines if l.startswith("REMARK")]
-            atom_lines = [l for l in lines if l.startswith("ATOM") or l.startswith("HETATM")]
-            fixed = remark_lines + ["ROOT\n"] + atom_lines + ["ENDROOT\n", "TORSDOF 0\n"]
-            with open(out_path, "w") as f:
-                f.writelines(fixed)
-            return True
+                with open(rigid_path) as f:
+                    lines = f.readlines()
+                remark_lines = [l for l in lines if l.startswith("REMARK")]
+                atom_lines = [l for l in lines if l.startswith("ATOM") or l.startswith("HETATM")]
+                fixed = remark_lines + ["ROOT\n"] + atom_lines + ["ENDROOT\n", "TORSDOF 0\n"]
+                with open(out_path, "w") as f:
+                    f.writelines(fixed)
+                return True
 
     except Exception:
         return False
+
+
+# 柔軟ドッキングを適用する最大ペプチド長（この残基数以下が対象）
+FLEXIBLE_DOCKING_MAX_LENGTH = 5
 
 
 # ─────────────────────────────────────────────
@@ -246,6 +261,7 @@ def _run_vina(
     size: tuple[float, float, float],
     exhaustiveness: int = 8,
     num_modes: int = 3,
+    timeout: int = 120,
 ) -> Optional[float]:
     """
     vina バイナリを subprocess で実行し、最良スコア [kcal/mol] を返す。
@@ -268,7 +284,7 @@ def _run_vina(
     try:
         result = subprocess.run(
             cmd,
-            capture_output=True, text=True, timeout=120,
+            capture_output=True, text=True, timeout=timeout,
         )
         if result.returncode != 0:
             return None
@@ -297,6 +313,7 @@ def dock_peptide(
     box_center: tuple[float, float, float],
     box_size: tuple[float, float, float] = (20.0, 20.0, 20.0),
     exhaustiveness: int = 8,
+    flexible: Optional[bool] = None,
 ) -> Optional[float]:
     """
     単一ペプチド配列をドッキングしてスコア [kcal/mol] を返す。
@@ -313,6 +330,9 @@ def dock_peptide(
         サーチボックスサイズ (x, y, z) [Å]（デフォルト 20x20x20）
     exhaustiveness : int
         探索の徹底度（デフォルト 8、速度優先なら 4）
+    flexible : bool or None
+        True=柔軟、False=剛体、None=配列長で自動判定
+        (≤FLEXIBLE_DOCKING_MAX_LENGTH 残基 → 柔軟、それ以上 → 剛体)
 
     Returns
     -------
@@ -322,13 +342,18 @@ def dock_peptide(
     if not is_vina_available():
         return None
 
+    # 自動判定: 短鎖は柔軟ドッキング、長鎖は剛体
+    use_flexible = flexible if flexible is not None else (len(sequence) <= FLEXIBLE_DOCKING_MAX_LENGTH)
+
     with tempfile.TemporaryDirectory() as tmpdir:
         ligand_pdbqt = os.path.join(tmpdir, "ligand.pdbqt")
         out_pdbqt = os.path.join(tmpdir, "out.pdbqt")
 
-        if not _sequence_to_pdbqt(sequence, ligand_pdbqt):
+        if not _sequence_to_pdbqt(sequence, ligand_pdbqt, flexible=use_flexible):
             return None
 
+        # 柔軟ドッキングはサーチ空間が広いため timeout を延長
+        timeout = 180 if use_flexible else 120
         return _run_vina(
             receptor_pdbqt=receptor_pdbqt_path,
             ligand_pdbqt=ligand_pdbqt,
@@ -336,6 +361,7 @@ def dock_peptide(
             center=box_center,
             size=box_size,
             exhaustiveness=exhaustiveness,
+            timeout=timeout,
         )
 
 
@@ -379,6 +405,7 @@ def dock_top_candidates(
     box_size: tuple[float, float, float] = (20.0, 20.0, 20.0),
     top_n: int = 15,
     exhaustiveness: int = 8,
+    flexible: Optional[bool] = None,
 ) -> pd.DataFrame:
     """
     result_df の上位 top_n 候補に対してドッキングを実行し、
@@ -399,25 +426,33 @@ def dock_top_candidates(
         ドッキングを実行する上位候補数（デフォルト 15）
     exhaustiveness : int
         vina の探索徹底度
+    flexible : bool or None
+        True=柔軟、False=剛体、None=配列長で自動判定（各配列ごとに適用）
     """
     if not is_vina_available():
         return result_df
 
     out = result_df.copy()
     out["docking_score"] = float("nan")
+    out["docking_mode"] = ""
 
     for idx in out.index:
         if "rank" in out.columns and out.at[idx, "rank"] > top_n:
             continue
 
+        seq = out.at[idx, "sequence"]
+        use_flexible = flexible if flexible is not None else (len(seq) <= FLEXIBLE_DOCKING_MAX_LENGTH)
+
         score = dock_peptide(
-            sequence=out.at[idx, "sequence"],
+            sequence=seq,
             receptor_pdbqt_path=receptor_pdbqt_path,
             box_center=box_center,
             box_size=box_size,
             exhaustiveness=exhaustiveness,
+            flexible=use_flexible,
         )
         if score is not None:
             out.at[idx, "docking_score"] = score
+        out.at[idx, "docking_mode"] = "flexible" if use_flexible else "rigid"
 
     return out
