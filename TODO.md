@@ -1,5 +1,5 @@
 # TODO
-最終更新: 2026-04-08（Phase B-2+ 完了）
+最終更新: 2026-04-09（Phase B-2++ 動作確認完了）
 
 ---
 
@@ -60,9 +60,17 @@
          `core/proteinmpnn.score_sequences_with_receptor()` 実装済み
       → 構造未指定時は B-2（構造フリー）に自動フォールバック
 
-## 長期タスク（Phase B-2++）
+## Phase B-2++ 完了 ✅
 
-- [ ] PepFold による初期骨格生成パイプライン（ダミーヘリックスを実骨格に置き換え）
+- [x] ESMFold ローカル推論（fair-esm）によるペプチド骨格生成
+      → `core/pepfold.py`、`scripts/esmfold_scorer.py` 実装済み
+      → 設計: 全候補はヘリックスで高速処理 → diversity 後の少数候補に ESMFold で再スコアリング
+      → 予測失敗時は理想ヘリックスへ自動フォールバック（後方互換）
+      → 環境変数: PEPFOLD_MAX_SEQS（デフォルト30）
+      → 動作確認済み: Rescoring notes に MPNN(ESMFold+receptor) が表示される
+
+## 長期タスク
+
 - [ ] AlphaFold2-Multimer による結合構造再予測
 
 ---

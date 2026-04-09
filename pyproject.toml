@@ -16,6 +16,15 @@ dependencies = [
     "rdkit>=2026.3.1",
     "gemmi>=0.7.5",
     "torch>=2.11.0",
+    "huggingface-hub>=1.9.2",
+    "fair-esm>=2.0.0",
+    "omegaconf>=2.3.0",
+    "ml-collections>=1.1.0",
+    "dm-tree>=0.1.10",
+    "modelcif>=1.6",
+    "einops>=0.8.2",
+    "biotite>=1.6.0",
+    "pydantic<2",
 ]
 
 [tool.uv]

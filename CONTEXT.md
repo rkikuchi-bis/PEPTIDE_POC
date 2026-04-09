@@ -1,5 +1,5 @@
 # Current State
-最終更新: 2026-04-08（Phase B-2+ 完了: 受容体条件付き ProteinMPNN）
+最終更新: 2026-04-09（Phase B-2++ 動作確認完了: ESMFold ローカル推論 + diversity 後再スコアリング）
 
 ---
 
@@ -107,12 +107,30 @@
 - `core/pipeline.py` — 上記 3 引数を `rescore_candidates()` に伝搬
 - `app.py` — Run ボタン時に構造パース + `get_pocket_ca_centroid()` を呼び出し、`run_pipeline()` に渡す
 
+### Phase B-2++: ESMFold ローカル推論 + diversity 後再スコアリング（実装・動作確認完了）
+- `core/pepfold.py` — fair-esm ローカル推論（サブプロセス経由）
+  - `predict_backbones_batch(sequences)` — 複数配列を一括予測
+  - 環境変数 `PEPFOLD_MAX_SEQS`（デフォルト30）で上限制御
+  - 失敗時は None を返し、呼び出し元が理想ヘリックスで代替
+- `scripts/esmfold_scorer.py` — ESMFold 推論スクリプト（LightGBM との OpenMP 競合回避）
+- `scripts/mpnn_scorer_receptor.py` — `--peptide-coords` 引数を追加
+  - pickle ファイルで渡された ESMFold 座標を使用（あれば）
+  - 後方互換: 引数なしなら従来の理想ヘリックス動作
+- `core/proteinmpnn.py` — `score_sequences_with_receptor()` の戻り値が `(scores, flags)` タプル
+- `core/rescorer.py` — 2段階スコアリング設計
+  - `rescore_candidates()`: 全候補（数百〜千件）をヘリックス骨格で高速処理
+  - `apply_esmfold_rescoring()`: diversity 後の少数候補（20〜50件）に ESMFold 骨格で再スコアリング
+- `core/pipeline.py` — diversity 絞り込み後に `apply_esmfold_rescoring()` を呼び出し
+- `ui/results.py` — 詳細パネルで "Phase B-2++" / "Phase B-2+" / "Phase B-2" を区別表示
+- **依存パッケージ**: fair-esm, openfold, omegaconf, ml-collections, dm-tree, modelcif, einops, biotite, pydantic<2
+- **venv パッチ**: trunk.py / esmfold.py（dataclass mutable default）、pretrained.py（openfold 2.x レイヤー名リマップ）
+- **モデルキャッシュ**: `~/.cache/torch/hub/checkpoints/esmfold_3B_v1.pt`（約2GB）
+
 ## Next Steps
 
 ### Phase B-1+ 改善案（任意）
 - 短鎖（≤5残基）は柔軟ドッキング・長鎖は剛体の自動切り替え
 - obabel 依存削減（meeko が arm64 対応次第）
 
-### Phase B-2++ 改善案（任意）
-- PepFold による初期骨格生成 → ProteinMPNN への入力に使用（ダミーヘリックスより精度向上）
+### Phase B-2+++ 改善案（任意）
 - AlphaFold2-Multimer による結合構造再予測

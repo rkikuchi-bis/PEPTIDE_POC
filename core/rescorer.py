@@ -351,21 +351,50 @@ def rescore_candidates(
     )
 
     if use_receptor_mpnn:
-        # Phase B-2+: 受容体構造を条件付けとしたスコアリング
-        mpnn_scores = score_sequences_with_receptor(
-            out["sequence"].tolist(),
-            structure_text=structure_text,
-            file_format=file_format,
-            centroid=pocket_centroid,
-        )
+        # Phase B-2+: 受容体条件付き（ヘリックス骨格）でスコアリング
+        # ESMFold 骨格は候補数が多いためここでは使わない。
+        # apply_esmfold_rescoring() が diversity 後の少数候補に対して実行する。
+        import os as _os
+        _orig = _os.environ.get("PEPFOLD_MAX_SEQS")
+        _os.environ["PEPFOLD_MAX_SEQS"] = "0"
+        try:
+            mpnn_scores, esmfold_flags = score_sequences_with_receptor(
+                out["sequence"].tolist(),
+                structure_text=structure_text,
+                file_format=file_format,
+                centroid=pocket_centroid,
+            )
+        finally:
+            if _orig is None:
+                _os.environ.pop("PEPFOLD_MAX_SEQS", None)
+            else:
+                _os.environ["PEPFOLD_MAX_SEQS"] = _orig
         out["proteinmpnn_receptor_conditioned"] = True
+        out["esmfold_backbone_used"] = esmfold_flags
     else:
         # Phase B-2: 構造フリー（フォールバック）
         mpnn_scores = score_sequences_batch(out["sequence"].tolist())
         out["proteinmpnn_receptor_conditioned"] = False
+        out["esmfold_backbone_used"] = False
 
     out["proteinmpnn_score"] = [round(s, 4) for s in mpnn_scores]
     out["proteinmpnn_score_available"] = mpnn_available
+
+    # rescoring_notes に MPNN 骨格モードを付記する
+    esmfold_col = out.get("esmfold_backbone_used", False)
+    if use_receptor_mpnn:
+        def _append_mpnn_note(row_idx: int, note: str) -> str:
+            if isinstance(esmfold_col, bool):
+                used = esmfold_col
+            else:
+                used = bool(esmfold_col.iloc[row_idx])
+            tag = "ESMFold+receptor" if used else "helix+receptor"
+            return f"{note}; MPNN({tag})"
+
+        out["rescoring_notes"] = [
+            _append_mpnn_note(i, n)
+            for i, n in enumerate(out["rescoring_notes"])
+        ]
 
     # 最終統合スコア（利用可能なスコアに応じて重み自動切替）
     if ml_available and mpnn_available:
@@ -383,6 +412,75 @@ def rescore_candidates(
             + 0.20 * out["property_score"]
             + 0.30 * out["rescoring_score"]
             + 0.30 * out["ml_score"]
+        ).round(4)
+    else:
+        out["final_score"] = (
+            0.30 * out["gen_score"]
+            + 0.30 * out["property_score"]
+            + 0.40 * out["rescoring_score"]
+        ).round(4)
+
+    return out
+
+
+def apply_esmfold_rescoring(
+    df: pd.DataFrame,
+    structure_text: str,
+    file_format: str,
+    pocket_centroid: tuple[float, float, float],
+) -> pd.DataFrame:
+    """
+    diversity 絞り込み後の少数候補に対して ESMFold 骨格で MPNN スコアを再計算する。
+
+    rescore_candidates() でヘリックス骨格を使った proteinmpnn_score を
+    ESMFold 予測骨格ベースのスコアで上書きする（Phase B-2++）。
+
+    候補数が少ない（diversity 後は通常 20〜50 件）ため ESMFold が全件に適用される。
+    """
+    if df.empty:
+        return df
+
+    mpnn_available = is_proteinmpnn_available()
+    if not mpnn_available:
+        return df
+
+    out = df.copy()
+    sequences = out["sequence"].tolist()
+
+    mpnn_scores, esmfold_flags = score_sequences_with_receptor(
+        sequences,
+        structure_text=structure_text,
+        file_format=file_format,
+        centroid=pocket_centroid,
+    )
+
+    out["proteinmpnn_score"] = [round(s, 4) for s in mpnn_scores]
+    out["esmfold_backbone_used"] = esmfold_flags
+
+    # rescoring_notes の MPNN タグを更新する
+    def _update_note(note: str, used: bool) -> str:
+        # 既存の MPNN(...) タグを置換（なければ追記）
+        import re
+        tag = "ESMFold+receptor" if used else "helix+receptor"
+        if re.search(r"; MPNN\([^)]+\)", note):
+            return re.sub(r"; MPNN\([^)]+\)", f"; MPNN({tag})", note)
+        return f"{note}; MPNN({tag})"
+
+    if "rescoring_notes" in out.columns:
+        out["rescoring_notes"] = [
+            _update_note(note, bool(used))
+            for note, used in zip(out["rescoring_notes"], esmfold_flags)
+        ]
+
+    # final_score を再計算する
+    ml_available = is_model_available()
+    if ml_available:
+        out["final_score"] = (
+            0.15 * out["gen_score"]
+            + 0.15 * out["property_score"]
+            + 0.25 * out["rescoring_score"]
+            + 0.25 * out["ml_score"]
+            + 0.20 * out["proteinmpnn_score"]
         ).round(4)
     else:
         out["final_score"] = (

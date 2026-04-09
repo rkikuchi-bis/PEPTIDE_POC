@@ -1,5 +1,5 @@
 """
-受容体構造を条件付けとした ProteinMPNN スコアリング（Phase B-2+）
+受容体構造を条件付けとした ProteinMPNN スコアリング（Phase B-2+/B-2++）
 
 core/proteinmpnn.py からサブプロセスとして呼び出される。
 LightGBM との OpenMP 競合を避けるため、このプロセスには LightGBM は存在しない。
@@ -8,18 +8,23 @@ LightGBM との OpenMP 競合を避けるため、このプロセスには Light
     python scripts/mpnn_scorer_receptor.py \
         --receptor /tmp/receptor.pdb \
         --centroid 10.5 20.3 -5.1 \
+        [--peptide-coords /tmp/coords.pkl] \
         ACDEFGHIK WFYWFYWFY ...
     -> 1行1スコアで標準出力
 
 設計:
-    受容体バックボーン (chain_M=0) + ペプチド理想ヘリックス (chain_M=1) を結合し、
+    受容体バックボーン (chain_M=0) + ペプチド骨格 (chain_M=1) を結合し、
     ペプチド残基の対数尤度のみをスコアとして返す。
-    ペプチドは pocket centroid を中心に配置（グラフ上で受容体残基と隣接させる）。
+
+    ペプチド骨格の優先順位:
+        1. --peptide-coords で渡された ESMFold 予測骨格（Phase B-2++）
+        2. フォールバック: pocket centroid を中心とした理想 αヘリックス（Phase B-2+）
 """
 import sys
 import os
 import math
 import argparse
+import pickle
 
 _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 _MPNN_DIR = os.path.join(_ROOT, "models", "proteinmpnn")
@@ -176,6 +181,7 @@ def score_sequence_with_receptor(
     peptide_sequence: str,
     centroid: np.ndarray,
     device,
+    peptide_coords: np.ndarray | None = None,
 ) -> float:
     """
     受容体座標をコンテキストとして、ペプチド配列をスコアリングする。
@@ -184,6 +190,10 @@ def score_sequence_with_receptor(
     - ペプチド残基: chain_M = 1（デザイン対象、スコアリング対象）
 
     NLL はペプチド残基のみで計算する。
+
+    Args:
+        peptide_coords: ESMFold 等で予測した骨格座標 (L, 4, 3)。
+                        None の場合は理想 αヘリックスを使用。
     """
     clean_pep = "".join(aa for aa in peptide_sequence.upper() if aa in _STANDARD_AA)
     if len(clean_pep) < 3:
@@ -193,8 +203,11 @@ def score_sequence_with_receptor(
     L_pep = len(clean_pep)
     L_total = L_rec + L_pep
 
-    # ペプチド座標を centroid に配置
-    pep_coords = _ideal_helix_at_centroid(L_pep, centroid)
+    # ペプチド骨格座標: ESMFold 予測 → 理想ヘリックス の優先順位で使用
+    if peptide_coords is not None and len(peptide_coords) == L_pep:
+        pep_coords = peptide_coords.astype(np.float32)
+    else:
+        pep_coords = _ideal_helix_at_centroid(L_pep, centroid)
 
     # 座標結合: (L_total, 4, 3)
     if L_rec > 0:
@@ -244,6 +257,10 @@ if __name__ == "__main__":
     parser.add_argument("--receptor", required=True, help="受容体 PDB ファイルパス")
     parser.add_argument("--centroid", type=float, nargs=3, required=True,
                         metavar=("X", "Y", "Z"), help="ポケット重心座標")
+    parser.add_argument(
+        "--peptide-coords", default=None,
+        help="ESMFold 予測骨格座標の pickle ファイルパス（list[ndarray | None]）"
+    )
     parser.add_argument("sequences", nargs="*", help="スコアリングするペプチド配列")
     args = parser.parse_args()
 
@@ -253,6 +270,17 @@ if __name__ == "__main__":
 
     centroid = np.array(args.centroid, dtype=np.float32)
     device = torch.device("mps") if torch.backends.mps.is_available() else torch.device("cpu")
+
+    # ESMFold 骨格座標ロード（提供された場合のみ）
+    peptide_coords_list: list[np.ndarray | None] = [None] * len(sequences)
+    if args.peptide_coords and os.path.exists(args.peptide_coords):
+        try:
+            with open(args.peptide_coords, "rb") as f:
+                loaded = pickle.load(f)
+            if isinstance(loaded, list) and len(loaded) == len(sequences):
+                peptide_coords_list = loaded
+        except Exception:
+            pass  # 読み込み失敗時は理想ヘリックスにフォールバック
 
     # 受容体バックボーン抽出
     try:
@@ -269,10 +297,11 @@ if __name__ == "__main__":
             print(0.5)
         sys.exit(0)
 
-    for seq in sequences:
+    for seq, pep_coords in zip(sequences, peptide_coords_list):
         try:
             score = score_sequence_with_receptor(
-                model, receptor_coords, receptor_seq, seq, centroid, device
+                model, receptor_coords, receptor_seq, seq, centroid, device,
+                peptide_coords=pep_coords,
             )
         except Exception:
             score = 0.5

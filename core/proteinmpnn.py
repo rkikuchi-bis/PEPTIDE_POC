@@ -8,12 +8,13 @@ scripts/mpnn_scorer.py をサブプロセスとして起動して実行する。
 （サブプロセス起動コストを一度にまとめられる）。
 
 受容体構造を条件付けとしてスコアリングする場合は
-score_sequences_with_receptor() を使うこと（Phase B-2+）。
+score_sequences_with_receptor() を使うこと（Phase B-2+/B-2++）。
 
 Streamlit に依存しない純粋な Python モジュール。
 """
 from __future__ import annotations
 
+import pickle
 import subprocess
 import sys
 import tempfile
@@ -94,12 +95,15 @@ def score_sequences_with_receptor(
     structure_text: str,
     file_format: str,
     centroid: tuple[float, float, float],
-) -> list[float]:
+) -> tuple[list[float], list[bool]]:
     """
-    受容体構造を条件付けとして、複数ペプチド配列を一括スコアリングする（Phase B-2+）。
+    受容体構造を条件付けとして、複数ペプチド配列を一括スコアリングする（Phase B-2+/B-2++）。
 
-    受容体バックボーン (chain_M=0) + ペプチド理想ヘリックス (chain_M=1) を結合し、
+    受容体バックボーン (chain_M=0) + ペプチド骨格 (chain_M=1) を結合し、
     ペプチド残基の対数尤度のみをスコアとして返す。
+
+    ペプチド骨格は ESMFold API で予測した座標を使用する（Phase B-2++）。
+    API 呼び出しが失敗した配列は理想 αヘリックスで代替する（Phase B-2+ 互換）。
 
     Args:
         sequences: ペプチド配列のリスト
@@ -108,37 +112,57 @@ def score_sequences_with_receptor(
         centroid: ポケット重心座標 (x, y, z)
 
     Returns:
-        各配列に対応するスコア [0, 1] のリスト。
-        エラー時は 0.5（中立）を返す。
+        (scores, esmfold_used_flags) のタプル
+        - scores: 各配列に対応するスコア [0, 1] のリスト
+        - esmfold_used_flags: 各配列で ESMFold 骨格を使用したか否かのフラグリスト
+        エラー時は scores=0.5（中立）、flags=False を返す。
     """
     if not sequences:
-        return []
+        return [], []
 
     if not _WEIGHTS_PATH.exists() or not _SCORER_RECEPTOR_SCRIPT.exists():
-        return [0.5] * len(sequences)
+        return [0.5] * len(sequences), [False] * len(sequences)
 
-    # 受容体 PDB を一時ファイルに書き出す（mmCIF は変換が必要なため PDB のみ対応）
+    # ESMFold による骨格予測（Phase B-2++）
+    try:
+        from core.pepfold import predict_backbones_batch
+        peptide_coords_list = predict_backbones_batch(list(sequences))
+    except Exception:
+        peptide_coords_list = [None] * len(sequences)
+
+    esmfold_used = [c is not None for c in peptide_coords_list]
+
+    # 受容体 PDB を一時ファイルに書き出す
     suffix = ".pdb" if file_format == "pdb" else ".cif"
-    tmp_path = None
+    tmp_receptor = None
+    tmp_coords = None
     try:
         with tempfile.NamedTemporaryFile(
             suffix=suffix, delete=False, mode="w", encoding="utf-8"
         ) as tmp:
             tmp.write(structure_text)
-            tmp_path = tmp.name
+            tmp_receptor = tmp.name
 
         # mmCIF の場合は BioPython で PDB に変換して渡す
         if file_format == "cif":
-            tmp_path = _convert_cif_to_pdb_temp(structure_text)
-            if tmp_path is None:
-                return [0.5] * len(sequences)
+            tmp_receptor = _convert_cif_to_pdb_temp(structure_text)
+            if tmp_receptor is None:
+                return [0.5] * len(sequences), [False] * len(sequences)
+
+        # ESMFold 骨格座標を pickle で一時ファイルに保存してサブプロセスに渡す
+        with tempfile.NamedTemporaryFile(
+            suffix=".pkl", delete=False, mode="wb"
+        ) as tmp:
+            pickle.dump(peptide_coords_list, tmp)
+            tmp_coords = tmp.name
 
         cx, cy, cz = centroid
         result = subprocess.run(
             [
                 sys.executable, str(_SCORER_RECEPTOR_SCRIPT),
-                "--receptor", tmp_path,
+                "--receptor", tmp_receptor,
                 "--centroid", str(cx), str(cy), str(cz),
+                "--peptide-coords", tmp_coords,
             ] + list(sequences),
             capture_output=True,
             text=True,
@@ -153,13 +177,14 @@ def score_sequences_with_receptor(
                 scores.append(0.5)
         while len(scores) < len(sequences):
             scores.append(0.5)
-        return scores[:len(sequences)]
+        return scores[:len(sequences)], esmfold_used
 
     except Exception:
-        return [0.5] * len(sequences)
+        return [0.5] * len(sequences), [False] * len(sequences)
     finally:
-        if tmp_path and os.path.exists(tmp_path):
-            os.unlink(tmp_path)
+        for path in (tmp_receptor, tmp_coords):
+            if path and os.path.exists(path):
+                os.unlink(path)
 
 
 def _convert_cif_to_pdb_temp(cif_text: str) -> str | None:

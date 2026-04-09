@@ -5,7 +5,7 @@ import pandas as pd
 
 from core.generator import generate_candidates
 from core.filters import apply_filters, add_basic_properties
-from core.rescorer import rescore_candidates
+from core.rescorer import rescore_candidates, apply_esmfold_rescoring
 from core.utils import save_run_csv
 from core.diversity import diversify_candidates
 from core.motif_compare import compare_candidates_to_known
@@ -83,6 +83,20 @@ def run_pipeline(
         rescored_df["diversity_kept"] = True
         if "diversity_min_distance" not in rescored_df.columns:
             rescored_df["diversity_min_distance"] = 1.0
+
+    # Phase B-2++: diversity 絞り込み後の少数候補に ESMFold 骨格で再スコアリング
+    if structure_text is not None and file_format is not None and pocket_centroid is not None:
+        rescored_df = apply_esmfold_rescoring(
+            rescored_df,
+            structure_text=structure_text,
+            file_format=file_format,
+            pocket_centroid=pocket_centroid,
+        )
+        # ESMFold 再スコアリング後に最終ランク順に並べ直す
+        rescored_df = rescored_df.sort_values(
+            by=["final_score", "rescoring_score", "property_score", "gen_score"],
+            ascending=False,
+        ).reset_index(drop=True)
 
     rescored_df = compare_candidates_to_known(
         rescored_df,

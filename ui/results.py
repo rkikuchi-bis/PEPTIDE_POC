@@ -87,9 +87,20 @@ def render_results(result_df, pdb_summary=None):
                     "proteinmpnn_receptor_conditioned" in row.index
                     and bool(row["proteinmpnn_receptor_conditioned"])
                 )
-                phase_label = "Phase B-2+ (receptor-conditioned)" if receptor_conditioned else "Phase B-2"
+                esmfold_used = (
+                    "esmfold_backbone_used" in row.index
+                    and bool(row["esmfold_backbone_used"])
+                )
+                if receptor_conditioned and esmfold_used:
+                    phase_label = "Phase B-2++ (ESMFold backbone + receptor)"
+                elif receptor_conditioned:
+                    phase_label = "Phase B-2+ (helix backbone + receptor)"
+                else:
+                    phase_label = "Phase B-2 (structure-free)"
                 st.write(f"- ProteinMPNN designability score ({phase_label}): {row['proteinmpnn_score']:.3f}")
             st.write(f"- Rescoring score: {row['rescoring_score']:.3f}")
+            if "rescoring_notes" in row.index and pd.notna(row["rescoring_notes"]):
+                st.write(f"- Rescoring notes: {row['rescoring_notes']}")
             st.write(f"- Generated score: {row['gen_score']:.3f}")
             st.write(f"- Property score: {row['property_score']:.3f}")
             st.write(f"- Length: {int(row['length'])}")
