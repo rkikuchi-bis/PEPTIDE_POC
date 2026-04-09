@@ -94,11 +94,11 @@ def render_sidebar() -> dict:
                     st.session_state["rcsb_selected_index"] = 0
                     reset_downloaded_structure()
                     if not results:
-                        st.info("RCSBで候補が見つかりませんでした。検索語を変えて試してください。")
+                        st.info("No results found on RCSB. / RCSBで候補が見つかりませんでした。検索語を変えて試してください。")
                 except error.HTTPError as e:
-                    st.error(f"RCSB検索でHTTPエラー: {e}")
+                    st.error(f"RCSB search HTTP error / RCSB検索でHTTPエラー: {e}")
                 except Exception as e:
-                    st.error(f"RCSB検索でエラー: {type(e).__name__}: {e}")
+                    st.error(f"RCSB search error / RCSB検索でエラー: {type(e).__name__}: {e}")
 
             rcsb_results = st.session_state["rcsb_results"]
 
@@ -130,9 +130,9 @@ def render_sidebar() -> dict:
                         st.session_state["downloaded_structure_pdb_id"] = selected_record["pdb_id"]
                         st.success(f"Loaded structure: {selected_record['pdb_id']}")
                     except error.HTTPError as e:
-                        st.error(f"構造ダウンロードでHTTPエラー: {e}")
+                        st.error(f"Structure download HTTP error / 構造ダウンロードでHTTPエラー: {e}")
                     except Exception as e:
-                        st.error(f"構造ダウンロードでエラー: {type(e).__name__}: {e}")
+                        st.error(f"Structure download error / 構造ダウンロードでエラー: {type(e).__name__}: {e}")
 
             if st.session_state["downloaded_structure_bytes"] is not None:
                 uploaded_structure = InMemoryUploadedStructure(
@@ -291,7 +291,7 @@ def render_sidebar() -> dict:
             "Preset motifs",
             options=preset_labels,
             default=[],
-            help="PoC向け参照モチーフ。厳密な既知 binder 保証ではなく説明性向上用です。",
+            help="Reference motifs for comparison. For explainability, not guaranteed known binders. / PoC向け参照モチーフ。厳密な既知 binder 保証ではなく説明性向上用です。",
         )
 
         custom_known_sequences_text = st.text_area(
@@ -306,7 +306,7 @@ def render_sidebar() -> dict:
         vina_ok = is_vina_available()
 
         if not vina_ok:
-            st.caption("vina バイナリが見つかりません（bin/vina）")
+            st.caption("Docking unavailable: vina binary not found (bin/vina) / vina バイナリが見つかりません（bin/vina）")
             enable_docking = False
             docking_params = None
         else:
@@ -341,7 +341,7 @@ def render_sidebar() -> dict:
                     "Exhaustiveness",
                     options=[4, 8, 16, 32],
                     value=8,
-                    help="高いほど精度が上がるが時間がかかる",
+                    help="Higher = more accurate but slower. / 高いほど精度が上がるが時間がかかる",
                 )
 
                 docking_params = {
@@ -357,13 +357,15 @@ def render_sidebar() -> dict:
         enable_selectivity = st.checkbox(
             "Enable Selectivity Mode",
             value=False,
-            help="ターゲットとオフターゲットのポケット適合差（選択性スコア）を計算します",
+            help="Computes selectivity score = target fit − off-target fit. / ターゲットとオフターゲットのポケット適合差（選択性スコア）を計算します",
         )
         selectivity_params = None
         if enable_selectivity:
             offtarget_label = st.text_input("Off-target label", value="Off-target")
             st.caption(
-                "オフターゲットのポケット特性を指定してください。"
+                "Specify off-target pocket properties. "
+                "Selectivity score = target rescoring − off-target rescoring  "
+                "｜  オフターゲットのポケット特性を指定してください。"
                 "選択性スコア = ターゲット rescoring − オフターゲット rescoring"
             )
             offtarget_charge = st.selectbox(
@@ -379,7 +381,7 @@ def render_sidebar() -> dict:
                 key="offtarget_hydrophobicity",
             )
 
-            st.markdown("**選択性重み λ（ランキングへの反映度）** 　推奨: 0.3")
+            st.markdown("**Selectivity weight λ (ranking influence) / 選択性重み λ（ランキングへの反映度）** — Recommended / 推奨: 0.3")
             selectivity_lambda = st.slider(
                 "λ",
                 min_value=0.0,
@@ -387,19 +389,23 @@ def render_sidebar() -> dict:
                 value=0.3,
                 step=0.05,
                 help=(
-                    "ランキングスコア = final_score + λ × selectivity_score\n\n"
-                    "λ = 0.0 のとき、ターゲット結合力のみでランキングします（副作用リスクは考慮しない）。\n"
+                    "Ranking score = final_score + λ × selectivity_score\n\n"
+                    "λ = 0.0: rank by binding affinity only (off-target risk ignored).\n"
+                    "Higher λ: promotes candidates with low off-target affinity.\n"
+                    "λ = 1.0: binding affinity and selectivity weighted equally.\n"
+                    "Recommended 0.3: balanced — influences ranking without large reversals.\n\n"
+                    "ランキングスコア = final_score + λ × selectivity_score\n"
+                    "λ = 0.0 のとき、ターゲット結合力のみでランキングします。\n"
                     "λ を大きくするほど、オフターゲットへの親和性が低い候補を上位に評価します。\n"
-                    "λ = 1.0 のとき、ターゲット結合力と選択性を同等に重視します。\n\n"
-                    "推奨値 0.3: selectivity_score の精度（物性ベースの差分）に見合ったバランス。"
-                    "ランキングに影響は出るが final_score を大きく逆転させない適度な強さ。"
+                    "推奨値 0.3: ランキングに影響は出るが final_score を大きく逆転させない適度な強さ。"
                 ),
             )
             lambda_label = (
-                "ターゲット結合力のみ（選択性を考慮しない）" if selectivity_lambda == 0.0
-                else f"選択性を反映（λ={selectivity_lambda:.2f}）"
+                "Binding affinity only (selectivity ignored) / ターゲット結合力のみ（選択性を考慮しない）"
+                if selectivity_lambda == 0.0
+                else f"Selectivity applied (λ={selectivity_lambda:.2f}) / 選択性を反映（λ={selectivity_lambda:.2f}）"
             )
-            st.caption(f"現在の設定: {lambda_label}")
+            st.caption(f"Current setting / 現在の設定: {lambda_label}")
 
             selectivity_params = {
                 "offtarget_label": offtarget_label,
@@ -431,7 +437,7 @@ def render_sidebar() -> dict:
             st.write(f"Auto charge guess: {pdb_summary['pocket_charge_guess']}")
             st.write(f"Auto hydrophobicity guess: {pdb_summary['pocket_hydrophobicity_guess']}")
         else:
-            st.caption("構造を選択すると parsed structure summary が表示されます。")
+            st.caption("Load a structure to see the parsed summary here. / 構造を選択すると parsed structure summary が表示されます。")
 
     # Assemble known_sequences from presets + custom input
     preset_sequences = [preset_dict[label] for label in selected_presets]

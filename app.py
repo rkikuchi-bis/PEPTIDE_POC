@@ -17,7 +17,8 @@ st.set_page_config(page_title="Peptide Discovery PoC", layout="wide")
 
 st.title("Peptide Discovery PoC")
 st.caption(
-    "入力 → 候補生成 → フィルタ → 再スコア → 多様性制御 → 既知モチーフ比較 → 表示 の最小版"
+    "Input → Candidate Generation → Filter → Rescoring → Diversity Control → Motif Comparison → Output  "
+    "｜  入力 → 候補生成 → フィルタ → 再スコア → 多様性制御 → 既知モチーフ比較 → 表示"
 )
 
 

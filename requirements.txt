@@ -1,0 +1,14 @@
+# Streamlit Cloud deployment
+# ESMFold (fair-esm) と docking (rdkit/meeko/gemmi) は除外
+# ProteinMPNN 用に torch CPU を使用
+
+--extra-index-url https://download.pytorch.org/whl/cpu
+
+biopython>=1.87
+numpy
+pandas
+streamlit>=1.45.0
+py3dmol>=2.0.0
+scikit-learn
+lightgbm
+torch

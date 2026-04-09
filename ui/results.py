@@ -104,7 +104,7 @@ def render_results(result_df, pdb_summary=None, pocket_charge="neutral", pocket_
 
             # ── Direction A: 推薦理由（説明ボックス） ──────────────────────
             explanation = explain_candidate(row, pocket_charge, pocket_hydrophobicity)
-            st.info(f"**推薦理由（Direction A: Explainability）**\n\n{explanation}")
+            st.info(f"**Recommendation Reason / 推薦理由（Direction A: Explainability）**\n\n{explanation}")
 
             st.markdown(f"**Sequence:** `{row['sequence']}`")
             if "selective_final_score" in row.index and pd.notna(row["selective_final_score"]):
@@ -113,8 +113,8 @@ def render_results(result_df, pdb_summary=None, pocket_charge="neutral", pocket_
                 diff = sel_fs - fs
                 sign = "+" if diff >= 0 else ""
                 st.write(
-                    f"- **Selective final score（ランキング基準）**: {sel_fs:.3f}"
-                    f"　（final_score {fs:.3f} {sign}{diff:.3f} 選択性補正）"
+                    f"- **Selective final score (ranking basis / ランキング基準)**: {sel_fs:.3f}"
+                    f"　(final_score {fs:.3f} {sign}{diff:.3f} selectivity correction / 選択性補正)"
                 )
             st.write(f"- Final score: {row['final_score']:.3f}")
 
@@ -125,7 +125,7 @@ def render_results(result_df, pdb_summary=None, pocket_charge="neutral", pocket_
                 sel_color = "🟢" if sel >= 0.10 else ("🔴" if sel <= -0.05 else "🟡")
                 st.write(
                     f"- **Selectivity score（Phase C-1）**: {sel_color} {sel:.3f} "
-                    f"（vs {offtarget_label}; 正値=ターゲット選択的）"
+                    f"(vs {offtarget_label}; positive = target-selective / 正値=ターゲット選択的)"
                 )
                 if "offtarget_rescoring_score" in row.index:
                     st.write(
@@ -217,4 +217,4 @@ def render_results(result_df, pdb_summary=None, pocket_charge="neutral", pocket_
             if "rescoring_notes" in row.index:
                 st.write(f"- Notes: {row['rescoring_notes']}")
     else:
-        st.info("左の設定を調整して、Generate and Filter を押してください。")
+        st.info("Adjust settings in the sidebar and click 'Generate and Filter'. / 左の設定を調整して、Generate and Filter を押してください。")
