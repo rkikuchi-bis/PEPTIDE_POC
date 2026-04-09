@@ -71,9 +71,23 @@
       → 環境変数: PEPFOLD_MAX_SEQS（デフォルト30）
       → 動作確認済み: Rescoring notes に MPNN(ESMFold+receptor) が表示される
 
-## 長期タスク
+## Direction A + B 完了 ✅（2026-04-09）
 
-- [ ] AlphaFold2-Multimer による結合構造再予測
+- [x] Direction A: Explainability — `core/explainer.py`, `ui/results.py` 更新
+      → 各候補の推薦理由を日本語自然言語で説明（pI/GRAVY/安定性/ML/MPNN/ドッキング/選択性を統合）
+- [x] Direction B: Selectivity Phase C-1 — `core/selectivity.py`, `ui/sidebar.py`, `app.py` 更新
+      → ターゲットとオフターゲットの rescoring 差分で選択性スコアを定量化
+      → テーブルの選択性ソート、詳細パネルの 🟢/🟡/🔴 表示
+
+## λ デフォルト化 完了 ✅（2026-04-09）
+
+- [x] λ=0.3 をデフォルト値に設定（`ui/sidebar.py`）
+- [x] サイドバーに「推奨: 0.3」ラベルと根拠をツールチップに記載
+
+## 将来タスク（任意・優先度低）
+
+- [ ] 選択性モードにオフターゲット構造ファイルのアップロード対応（現状はポケット物性の手動指定のみ）
+- [ ] AlphaFold2-Multimer による結合構造再予測（B-3: 長期・高コスト）
 
 ---
 

@@ -1,8 +1,10 @@
 import pandas as pd
 import streamlit as st
 
+from core.explainer import explain_candidate
 
-def render_results(result_df, pdb_summary=None):
+
+def render_results(result_df, pdb_summary=None, pocket_charge="neutral", pocket_hydrophobicity="medium"):
     if result_df is not None:
         if pdb_summary is not None:
             st.subheader("Selected structure summary")
@@ -14,21 +16,45 @@ def render_results(result_df, pdb_summary=None):
 
         st.subheader("Results")
 
+        has_selectivity = "selectivity_score" in result_df.columns
+
         col1, col2, col3, col4 = st.columns(4)
         col1.metric("Remaining candidates", len(result_df))
         col2.metric("Top final score", f"{result_df['final_score'].max():.3f}" if len(result_df) > 0 else "0.000")
         col3.metric("Median length", int(result_df["length"].median()) if len(result_df) > 0 else 0)
-        if "motif_compare_score" in result_df.columns and len(result_df) > 0 and result_df["motif_compare_score"].notna().any():
+        if has_selectivity and len(result_df) > 0:
+            col4.metric("Top selectivity score", f"{result_df['selectivity_score'].max():.3f}")
+        elif "motif_compare_score" in result_df.columns and len(result_df) > 0 and result_df["motif_compare_score"].notna().any():
             col4.metric("Top motif compare", f"{result_df['motif_compare_score'].fillna(0).max():.3f}")
         else:
             col4.metric("Top motif compare", "-")
+
+        # 選択性モード時は selectivity_score でソートするオプション
+        if has_selectivity:
+            sort_by = st.radio(
+                "Sort by",
+                ["Final score（総合）", "Selectivity score（選択性）"],
+                horizontal=True,
+            )
+            if sort_by == "Selectivity score（選択性）":
+                display_df = result_df.sort_values("selectivity_score", ascending=False).reset_index(drop=True)
+                display_df.insert(0, "sel_rank", range(1, len(display_df) + 1))
+            else:
+                display_df = result_df
+        else:
+            display_df = result_df
 
         display_cols = [
             # ── 順位・配列 ──
             "rank",
             "sequence",
             # ── 統合スコア ──
+            "selective_final_score",  # λ>0 のときランキング基準
             "final_score",
+            # ── 選択性（Direction B） ──
+            "selectivity_score",
+            "offtarget_rescoring_score",
+            # ── その他スコア ──
             "ml_score",
             "proteinmpnn_score",
             "rescoring_score",
@@ -63,10 +89,10 @@ def render_results(result_df, pdb_summary=None):
             "known_kmer_jaccard_max",
             "motif_compare_score",
         ]
-        display_cols = [c for c in display_cols if c in result_df.columns]
+        display_cols = [c for c in display_cols if c in display_df.columns]
 
         st.dataframe(
-            result_df[display_cols],
+            display_df[display_cols],
             width="stretch",
             height=500,
         )
@@ -76,8 +102,37 @@ def render_results(result_df, pdb_summary=None):
             selected_rank = st.selectbox("Select rank", result_df["rank"].tolist(), index=0)
             row = result_df[result_df["rank"] == selected_rank].iloc[0]
 
+            # ── Direction A: 推薦理由（説明ボックス） ──────────────────────
+            explanation = explain_candidate(row, pocket_charge, pocket_hydrophobicity)
+            st.info(f"**推薦理由（Direction A: Explainability）**\n\n{explanation}")
+
             st.markdown(f"**Sequence:** `{row['sequence']}`")
+            if "selective_final_score" in row.index and pd.notna(row["selective_final_score"]):
+                sel_fs = float(row["selective_final_score"])
+                fs = float(row["final_score"])
+                diff = sel_fs - fs
+                sign = "+" if diff >= 0 else ""
+                st.write(
+                    f"- **Selective final score（ランキング基準）**: {sel_fs:.3f}"
+                    f"　（final_score {fs:.3f} {sign}{diff:.3f} 選択性補正）"
+                )
             st.write(f"- Final score: {row['final_score']:.3f}")
+
+            # ── Direction B: 選択性スコア ──────────────────────────────────
+            if "selectivity_score" in row.index and pd.notna(row["selectivity_score"]):
+                sel = float(row["selectivity_score"])
+                offtarget_label = str(row.get("offtarget_label", "Off-target"))
+                sel_color = "🟢" if sel >= 0.10 else ("🔴" if sel <= -0.05 else "🟡")
+                st.write(
+                    f"- **Selectivity score（Phase C-1）**: {sel_color} {sel:.3f} "
+                    f"（vs {offtarget_label}; 正値=ターゲット選択的）"
+                )
+                if "offtarget_rescoring_score" in row.index:
+                    st.write(
+                        f"  - Target rescoring: {row['rescoring_score']:.3f} / "
+                        f"Off-target rescoring: {row['offtarget_rescoring_score']:.3f}"
+                    )
+
             if "docking_score" in row.index and pd.notna(row["docking_score"]):
                 mode = row.get("docking_mode", "rigid") if "docking_mode" in row.index else "rigid"
                 st.write(f"- Docking score (Phase B-1, {mode}): {row['docking_score']:.2f} kcal/mol")

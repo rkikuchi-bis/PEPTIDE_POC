@@ -1,5 +1,5 @@
 # Current State
-最終更新: 2026-04-09（Phase B-1+ 完了: 短鎖/長鎖ドッキング自動切り替え、Streamlit 非推奨API修正）
+最終更新: 2026-04-09（Direction A + B 完了。選択性重み λ=0.3 デフォルト化）
 
 ---
 
@@ -133,10 +133,30 @@
 - `ui/results.py` — 詳細パネルに flexible/rigid を表示
 - Streamlit 非推奨 API 修正: `components.v1.html` → `st.iframe`、`use_container_width` → `width="stretch"`
 
+### Direction A: Explainability（LigandForge との差別化）
+- `core/explainer.py` — `explain_candidate(row, pocket_charge, pocket_hydrophobicity)` で日本語説明文生成
+  - pI・GRAVY・不安定性指数・芳香族性・ヘリックス傾向・ML/MPNN/ドッキング/選択性スコアを統合
+  - 各スコアの科学的根拠を自然言語で表現（ブラックボックス回避）
+- `ui/results.py` — 詳細パネルの先頭に `st.info()` ボックスで推薦理由を表示
+
+### Direction B: Selectivity（Phase C-1）
+- `core/selectivity.py` — `compute_selectivity(result_df, ...)` でオフターゲット向け再スコアリング
+  - `selectivity_score = rescoring_score_target - rescoring_score_offtarget`
+  - ML/MPNN は配列内因性のため差し引きに含めない（ポケット特性依存スコアのみ比較）
+- `ui/sidebar.py` — "Selectivity (Phase C-1)" セクション追加
+  - Off-target label / pocket charge / pocket hydrophobicity を設定
+- `ui/results.py` — 選択性スコア表示（🟢/🟡/🔴）と selectivity_score ソートラジオボタン
+- `app.py` — pipeline 後に自動的に `compute_selectivity()` を実行
+
+### λ（選択性重み）チューニング完了
+- デフォルト λ=0.3 に設定（`ui/sidebar.py`）
+- 根拠: selectivity_score の値域は ±0.1〜0.2 程度（物性差分）。λ=0.3 で補正幅 ±0.03〜0.06 となり、
+  ランキングに影響は出るが final_score を大きく逆転させない適度な強さ
+- ランキング式: `selective_final_score = final_score + λ × selectivity_score`
+- λ=0.0 で従来動作（選択性無視）に戻せる
+
 ## Next Steps
 
-### Phase B-1+ 残件（任意）
+### 将来検討（優先度低）
+- 選択性モード：オフターゲット構造ファイルのアップロードに対応（現状はポケット物性の手動指定のみ）
 - obabel 依存削減（meeko が arm64 対応次第）
-
-### Phase B-2+++ 改善案（任意）
-- AlphaFold2-Multimer による結合構造再予測

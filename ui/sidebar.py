@@ -353,6 +353,61 @@ def render_sidebar() -> dict:
             else:
                 docking_params = None
 
+        st.markdown("### Selectivity (Phase C-1)")
+        enable_selectivity = st.checkbox(
+            "Enable Selectivity Mode",
+            value=False,
+            help="ターゲットとオフターゲットのポケット適合差（選択性スコア）を計算します",
+        )
+        selectivity_params = None
+        if enable_selectivity:
+            offtarget_label = st.text_input("Off-target label", value="Off-target")
+            st.caption(
+                "オフターゲットのポケット特性を指定してください。"
+                "選択性スコア = ターゲット rescoring − オフターゲット rescoring"
+            )
+            offtarget_charge = st.selectbox(
+                "Off-target pocket charge",
+                charge_options,
+                index=0,
+                key="offtarget_charge",
+            )
+            offtarget_hydrophobicity = st.selectbox(
+                "Off-target pocket hydrophobicity",
+                hydrophobicity_options,
+                index=1,
+                key="offtarget_hydrophobicity",
+            )
+
+            st.markdown("**選択性重み λ（ランキングへの反映度）** 　推奨: 0.3")
+            selectivity_lambda = st.slider(
+                "λ",
+                min_value=0.0,
+                max_value=1.0,
+                value=0.3,
+                step=0.05,
+                help=(
+                    "ランキングスコア = final_score + λ × selectivity_score\n\n"
+                    "λ = 0.0 のとき、ターゲット結合力のみでランキングします（副作用リスクは考慮しない）。\n"
+                    "λ を大きくするほど、オフターゲットへの親和性が低い候補を上位に評価します。\n"
+                    "λ = 1.0 のとき、ターゲット結合力と選択性を同等に重視します。\n\n"
+                    "推奨値 0.3: selectivity_score の精度（物性ベースの差分）に見合ったバランス。"
+                    "ランキングに影響は出るが final_score を大きく逆転させない適度な強さ。"
+                ),
+            )
+            lambda_label = (
+                "ターゲット結合力のみ（選択性を考慮しない）" if selectivity_lambda == 0.0
+                else f"選択性を反映（λ={selectivity_lambda:.2f}）"
+            )
+            st.caption(f"現在の設定: {lambda_label}")
+
+            selectivity_params = {
+                "offtarget_label": offtarget_label,
+                "pocket_charge_offtarget": offtarget_charge,
+                "pocket_hydrophobicity_offtarget": offtarget_hydrophobicity,
+                "selectivity_lambda": selectivity_lambda,
+            }
+
         run_button = st.button("Generate and Filter", type="primary")
 
         if pdb_parse_error is not None:
@@ -416,4 +471,5 @@ def render_sidebar() -> dict:
         "structure_bytes": structure_bytes,
         "structure_filename": structure_filename,
         "run_button": run_button,
+        "selectivity_params": selectivity_params,
     }

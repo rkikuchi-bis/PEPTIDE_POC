@@ -34,6 +34,8 @@ defaults = {
     "downloaded_structure_pdb_id": None,
     "rcsb_last_query": "",
     "structure_source": "Upload local file",
+    "pocket_charge": "negative",
+    "pocket_hydrophobicity": "medium",
 }
 for key, val in defaults.items():
     if key not in st.session_state:
@@ -104,6 +106,9 @@ if params["run_button"]:
         )
         st.session_state["result_df"] = result_df
         st.session_state["docking_done"] = False
+        # ポケット特性を session_state に保存（説明生成に使用）
+        st.session_state["pocket_charge"] = params["pocket_charge"]
+        st.session_state["pocket_hydrophobicity"] = params["pocket_hydrophobicity"]
 
         # 受容体条件付きスコアリングの使用状況を表示
         if pocket_centroid is not None:
@@ -115,6 +120,44 @@ if params["run_button"]:
             )
         else:
             st.success(f"Done. Saved CSV to: {saved_path}")
+
+    # =========================
+    # Selectivity (Phase C-1)
+    # =========================
+    selectivity_params = params.get("selectivity_params")
+    if selectivity_params is not None and st.session_state["result_df"] is not None:
+        with st.spinner(
+            f"Computing selectivity vs. {selectivity_params['offtarget_label']}..."
+        ):
+            from core.selectivity import compute_selectivity
+            result_df = compute_selectivity(
+                st.session_state["result_df"],
+                pocket_charge_offtarget=selectivity_params["pocket_charge_offtarget"],
+                pocket_hydrophobicity_offtarget=selectivity_params["pocket_hydrophobicity_offtarget"],
+                offtarget_label=selectivity_params["offtarget_label"],
+                preferred_len_min=params["preferred_len_min"],
+                preferred_len_max=params["preferred_len_max"],
+            )
+
+            # λ > 0 のとき、選択性をランキングに反映する
+            lam = selectivity_params.get("selectivity_lambda", 0.0)
+            result_df["selective_final_score"] = (
+                result_df["final_score"] + lam * result_df["selectivity_score"]
+            ).round(4)
+
+            if lam > 0.0:
+                result_df = result_df.sort_values(
+                    "selective_final_score", ascending=False
+                ).reset_index(drop=True)
+                result_df["rank"] = range(1, len(result_df) + 1)
+
+            st.session_state["result_df"] = result_df
+            top_sel = result_df["selectivity_score"].max()
+            lam_msg = f"、λ={lam:.2f} でランキングに反映済み" if lam > 0.0 else "（λ=0: ランキングへの反映なし）"
+            st.info(
+                f"Selectivity computed vs. {selectivity_params['offtarget_label']}. "
+                f"Top selectivity score: {top_sel:.3f}{lam_msg}"
+            )
 
 
 # =========================
@@ -170,4 +213,9 @@ if (
 # =========================
 # Result display
 # =========================
-render_results(st.session_state["result_df"], params["pdb_summary"])
+render_results(
+    st.session_state["result_df"],
+    params["pdb_summary"],
+    pocket_charge=st.session_state["pocket_charge"],
+    pocket_hydrophobicity=st.session_state["pocket_hydrophobicity"],
+)
