@@ -7,12 +7,12 @@ from core.explainer import explain_candidate
 def render_results(result_df, pdb_summary=None, pocket_charge="neutral", pocket_hydrophobicity="medium"):
     if result_df is not None:
         if pdb_summary is not None:
-            st.subheader("Selected structure summary")
+            st.markdown("**Selected structure summary**")
             c1, c2, c3, c4 = st.columns(4)
-            c1.metric("Chain", pdb_summary["selected_chain"] if pdb_summary.get("selected_chain") else "-")
-            c2.metric("Mode", pdb_summary.get("source_mode", "-"))
-            c3.metric("Auto charge", pdb_summary["pocket_charge_guess"])
-            c4.metric("Auto hydrophobicity", pdb_summary["pocket_hydrophobicity_guess"])
+            c1.markdown(f"<small>Chain</small><br>**{pdb_summary.get('selected_chain') or '-'}**", unsafe_allow_html=True)
+            c2.markdown(f"<small>Mode</small><br>**{pdb_summary.get('source_mode', '-')}**", unsafe_allow_html=True)
+            c3.markdown(f"<small>Auto charge</small><br>**{pdb_summary.get('pocket_charge_guess', '-')}**", unsafe_allow_html=True)
+            c4.markdown(f"<small>Auto hydrophobicity</small><br>**{pdb_summary.get('pocket_hydrophobicity_guess', '-')}**", unsafe_allow_html=True)
 
         st.subheader("Results")
 
@@ -96,8 +96,12 @@ def render_results(result_df, pdb_summary=None, pocket_charge="neutral", pocket_
             row = result_df[result_df["rank"] == selected_rank].iloc[0]
 
             # ── Direction A: 推薦理由（説明ボックス） ──────────────────────
-            explanation = explain_candidate(row, pocket_charge, pocket_hydrophobicity)
-            st.info(f"**推薦理由 / Recommendation**\n\n{explanation}")
+            ja_explanation, en_explanation = explain_candidate(row, pocket_charge, pocket_hydrophobicity)
+            st.info(
+                f"**推薦理由 / Recommendation**\n\n"
+                f"🇯🇵 {ja_explanation}\n\n"
+                f"🇺🇸 {en_explanation}"
+            )
 
             st.markdown(f"**Sequence:** `{row['sequence']}`")
             if "selective_final_score" in row.index and pd.notna(row["selective_final_score"]):
