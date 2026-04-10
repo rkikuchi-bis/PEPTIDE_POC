@@ -152,6 +152,19 @@ def detect_structure_format(filename: str) -> str:
     raise ValueError("Unsupported file type. Please upload .pdb, .cif, or .mmcif")
 
 
+def get_recommended_chain(structure) -> str | None:
+    """最も標準アミノ酸残基が多いチェーンを返す（Simple mode 自動選択用）"""
+    best_chain = None
+    best_count = 0
+    for model in structure:
+        for chain in model:
+            count = sum(1 for r in chain if _is_standard_aa_residue(r))
+            if count > best_count:
+                best_count = count
+                best_chain = chain.id
+    return best_chain
+
+
 def get_chain_ids(structure) -> List[str]:
     chain_ids = set()
     for model in structure:

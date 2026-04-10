@@ -1,5 +1,5 @@
 # Current State
-最終更新: 2026-04-09（Direction A + B 完了。選択性重み λ=0.3 デフォルト化）
+最終更新: 2026-04-10（Simple/Expert mode 分割、Off-target DB、3D Viewer ペプチド重畳表示は未着手）
 
 ---
 
@@ -155,8 +155,38 @@
 - ランキング式: `selective_final_score = final_score + λ × selectivity_score`
 - λ=0.0 で従来動作（選択性無視）に戻せる
 
+### Simple / Expert mode 分割（完了 2026-04-10）
+- `ui/sidebar.py` を全面刷新
+  - **Simple mode**: 構造アップロード → Chain自動推奨（最多残基）→ Ligand自動選択 → Run のみ
+  - **Expert mode**: 全パラメータ手動制御（既存機能を保持）
+  - Selectivity は **Expert mode 専用**（Simple modeでは非表示）
+  - Target label → **Project name**（空白可、CSV ファイル名に使用、デフォルト `EGFR` を削除）
+  - Parsed structure summary を `expander` に収納
+- `core/pdb_utils.py` に `get_recommended_chain()` を追加（最多残基チェーン自動選択）
+
+### Off-target DB（完了 2026-04-10）
+- `core/offtarget_db.py` 新規作成
+  - 14ターゲット・複数 Off-target を収録（EGFR, BCR-ABL, ALK, β2-AR, D2, H1, ER, AR, PPARγ, hERG, HIV Protease, Thrombin, BRD4, CYP3A4）
+  - 各エントリに PDB ID・科学的背景説明（日英）を記載
+- Expert mode Selectivity に「Known off-target DB から選択」フロー追加
+  - ターゲット選択 → Off-target 選択（説明文表示）→ ボタン1つで RCSB 自動DL → Chain/Ligand 確認
+  - 「構造ファイルをアップロード」フローも継続サポート
+
+### オフターゲット構造アップロード対応（完了 2026-04-10）
+- `compute_selectivity()` はすでに `structure_text_offtarget` / `file_format_offtarget` / `pocket_centroid_offtarget` を受け取れる設計
+- `app.py` でオフターゲット構造から centroid を計算して渡すよう実装済み
+
 ## Next Steps
 
+### 優先度高
+- **3D Viewer にペプチド重畳表示（Option 1: 理想ヘリックス配置）**
+  - ポケット centroid に理想αヘリックス骨格を配置してビューアに追加表示
+  - `ui/structure_viewer.py` の `render_viewer_section()` を拡張
+  - `result_df` の rank 1 候補（または選択候補）の配列を受け取り、ヘリックス座標を生成して py3Dmol に addModel
+  - 既存の `scripts/mpnn_scorer_receptor.py` の理想ヘリックス生成コードを流用できる
+  - 科学的正確さは低いが PoC デモとして十分なインパクト
+
 ### 将来検討（優先度低）
-- 選択性モード：オフターゲット構造ファイルのアップロードに対応（現状はポケット物性の手動指定のみ）
+- 3D Viewer ペプチド重畳: Option 2（ESMFold骨格）・Option 3（Vinaドッキングポーズ）
 - obabel 依存削減（meeko が arm64 対応次第）
+- AlphaFold2-Multimer による結合構造再予測（B-3: 長期・高コスト）

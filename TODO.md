@@ -84,10 +84,29 @@
 - [x] λ=0.3 をデフォルト値に設定（`ui/sidebar.py`）
 - [x] サイドバーに「推奨: 0.3」ラベルと根拠をツールチップに記載
 
-## 将来タスク（任意・優先度低）
+## UI リファクタリング（完了 2026-04-10）
 
-- [ ] 選択性モードにオフターゲット構造ファイルのアップロード対応（現状はポケット物性の手動指定のみ）
+- [x] Simple / Expert mode 分割（`ui/sidebar.py` 全面刷新）
+- [x] Target label → Project name（空白可、CSV ファイル名用）
+- [x] Chain 自動推奨（`get_recommended_chain()` 追加）
+- [x] Selectivity を Expert mode 専用に移動
+- [x] Off-target DB 実装（`core/offtarget_db.py`、14ターゲット収録）
+- [x] Known off-target DB から選択 → RCSB 自動DL フロー
+- [x] オフターゲット構造アップロード → pocket centroid 自動計算
+
+## 次の優先タスク
+
+- [ ] **3D Viewer にペプチド重畳表示（Option 1: 理想ヘリックス配置）**
+      - `ui/structure_viewer.py` の `render_viewer_section()` を拡張
+      - `result_df` の選択候補配列を受け取り、ポケット centroid に理想ヘリックス座標を生成して py3Dmol に追加
+      - `scripts/mpnn_scorer_receptor.py` の理想ヘリックス生成コードを流用
+      - 赤色スティック or チューブで表示（受容体と色分け）
+
+## 将来タスク（優先度低）
+
+- [ ] 3D Viewer ペプチド重畳: Option 2（ESMFold骨格）・Option 3（Vinaドッキングポーズ保存）
 - [ ] AlphaFold2-Multimer による結合構造再予測（B-3: 長期・高コスト）
+- [ ] obabel 依存削減（meeko が arm64 対応次第）
 
 ---
 

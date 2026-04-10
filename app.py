@@ -131,6 +131,26 @@ if params["run_button"]:
             f"Computing selectivity vs. {selectivity_params['offtarget_label']}..."
         ):
             from core.selectivity import compute_selectivity
+            from core.pdb_utils import detect_structure_format, parse_structure_text
+
+            # オフターゲット構造が指定されていれば pocket centroid を計算
+            structure_text_offtarget = None
+            file_format_offtarget = None
+            pocket_centroid_offtarget = None
+            ot_bytes = selectivity_params.get("offtarget_structure_bytes")
+            ot_filename = selectivity_params.get("offtarget_structure_filename")
+            pdb_summary_ot = selectivity_params.get("pdb_summary_offtarget")
+            if ot_bytes is not None and pdb_summary_ot is not None:
+                try:
+                    file_format_offtarget = detect_structure_format(ot_filename)
+                    structure_text_offtarget = ot_bytes.decode("utf-8", errors="ignore")
+                    ot_structure_obj = parse_structure_text(structure_text_offtarget, file_format=file_format_offtarget)
+                    pocket_centroid_offtarget = get_pocket_ca_centroid(ot_structure_obj, pdb_summary_ot)
+                except Exception:
+                    structure_text_offtarget = None
+                    file_format_offtarget = None
+                    pocket_centroid_offtarget = None
+
             result_df = compute_selectivity(
                 st.session_state["result_df"],
                 pocket_charge_offtarget=selectivity_params["pocket_charge_offtarget"],
@@ -138,6 +158,9 @@ if params["run_button"]:
                 offtarget_label=selectivity_params["offtarget_label"],
                 preferred_len_min=params["preferred_len_min"],
                 preferred_len_max=params["preferred_len_max"],
+                structure_text_offtarget=structure_text_offtarget,
+                file_format_offtarget=file_format_offtarget,
+                pocket_centroid_offtarget=pocket_centroid_offtarget,
             )
 
             # λ > 0 のとき、選択性をランキングに反映する
