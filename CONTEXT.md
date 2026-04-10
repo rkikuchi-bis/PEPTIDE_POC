@@ -176,17 +176,22 @@
 - `compute_selectivity()` はすでに `structure_text_offtarget` / `file_format_offtarget` / `pocket_centroid_offtarget` を受け取れる設計
 - `app.py` でオフターゲット構造から centroid を計算して渡すよう実装済み
 
+### 3D Viewer ペプチド重畳表示（Option 1: 理想ヘリックス配置）（完了 2026-04-10）
+- `core/helix_utils.py` 新規作成
+  - `ideal_helix_coords(length, centroid)` — 理想αヘリックス座標 (L, 4, 3) 生成
+  - `helix_coords_to_pdb(sequence, centroid, chain_id="P")` — PDB文字列生成（CONECT レコード付きで残基間結合を明示）
+- `ui/structure_viewer.py` 拡張
+  - `render_viewer_section()` に `result_df`, `pocket_centroid` 引数追加
+  - rank 選択スライダー（1〜10）でビューア表示候補を切り替え可能
+  - ペプチドをマゼンタ単色スティック（chain "P"）で表示（ポケット残基のオレンジと区別）
+- `app.py` 修正
+  - `pocket_centroid` を session_state に保存
+  - 構造ファイルが変わった場合は centroid を無効化（古い centroid の誤適用防止）
+  - Run 完了後に `st.rerun()` で再描画
+
 ## Next Steps
 
-### 優先度高
-- **3D Viewer にペプチド重畳表示（Option 1: 理想ヘリックス配置）**
-  - ポケット centroid に理想αヘリックス骨格を配置してビューアに追加表示
-  - `ui/structure_viewer.py` の `render_viewer_section()` を拡張
-  - `result_df` の rank 1 候補（または選択候補）の配列を受け取り、ヘリックス座標を生成して py3Dmol に addModel
-  - 既存の `scripts/mpnn_scorer_receptor.py` の理想ヘリックス生成コードを流用できる
-  - 科学的正確さは低いが PoC デモとして十分なインパクト
-
 ### 将来検討（優先度低）
-- 3D Viewer ペプチド重畳: Option 2（ESMFold骨格）・Option 3（Vinaドッキングポーズ）
+- 3D Viewer ペプチド重畳: Option 2（ESMFold骨格）・Option 3（Vinaドッキングポーズ保存）
 - obabel 依存削減（meeko が arm64 対応次第）
 - AlphaFold2-Multimer による結合構造再予測（B-3: 長期・高コスト）

@@ -6,6 +6,7 @@ _COLOR_OTHER_CHAINS = "#bbbbbb"   # 非選択チェーン：薄いグレー
 _COLOR_SELECTED_CHAIN = "#5b9bd5"  # 選択チェーン：ブルー
 _COLOR_POCKET_STICK = "orangeCarbon"  # ポケット残基：オレンジ
 _COLOR_LIGAND = "greenCarbon"         # リガンド：グリーン
+_COLOR_PEPTIDE = "#ff00ff"            # ペプチド候補：マゼンタ（スティックの酸素赤と区別）
 _POCKET_SURFACE_OPACITY = 0.25
 
 
@@ -29,6 +30,8 @@ def render_structure_viewer(
     pdb_summary: dict,
     width: int = 720,
     height: int = 460,
+    peptide_sequence: str | None = None,
+    pocket_centroid=None,
 ) -> None:
     """
     py3Dmol を使ってタンパク質構造を 3D 表示する。
@@ -37,6 +40,7 @@ def render_structure_viewer(
     - 選択チェーン：ブルーのカートゥーン
     - ポケット領域（manual_region）：オレンジのスティック＋半透明サーフェス
     - リガンド（ligand_neighborhood）：グリーンのスティック
+    - ペプチド候補（rank 1）：赤色スティック（理想ヘリックス骨格）
     """
     try:
         import py3Dmol
@@ -96,6 +100,20 @@ def render_structure_viewer(
                 {"stick": {"colorscheme": _COLOR_POCKET_STICK, "radius": 0.2, "opacity": 0.6}},
             )
 
+    # ── ペプチド候補の重畳表示（理想ヘリックス骨格） ──
+    if peptide_sequence and pocket_centroid is not None:
+        try:
+            from core.helix_utils import helix_coords_to_pdb
+            pep_pdb = helix_coords_to_pdb(peptide_sequence, pocket_centroid, chain_id="P")
+            view.addModel(pep_pdb, "pdb")
+            # color キーで全原子を単色マゼンタに固定（CPKカラーリングを上書き）
+            view.addStyle(
+                {"chain": "P"},
+                {"stick": {"color": _COLOR_PEPTIDE, "radius": 0.3}},
+            )
+        except Exception:
+            pass  # ペプチド表示が失敗しても受容体は表示する
+
     view.zoomTo()
     view.spin(False)
 
@@ -107,13 +125,34 @@ def render_viewer_section(
     structure_bytes: bytes | None,
     structure_filename: str | None,
     pdb_summary: dict | None,
+    result_df=None,
+    pocket_centroid=None,
 ) -> None:
     """
     app.py から呼ぶエントリポイント。
     構造が読み込まれているときだけビューアを表示する。
+
+    result_df と pocket_centroid が揃っていれば、rank 1 候補を
+    理想ヘリックスとして重畳表示する。
     """
     if structure_bytes is None or pdb_summary is None:
         return
+
+    # 表示するペプチド配列を rank 選択で決定
+    peptide_sequence: str | None = None
+    selected_rank: int = 1
+    if result_df is not None and pocket_centroid is not None and len(result_df) > 0:
+        max_rank = min(len(result_df), 10)
+        selected_rank = st.select_slider(
+            "表示するペプチド候補のランク",
+            options=list(range(1, max_rank + 1)),
+            value=1,
+            key="viewer_rank_selector",
+        )
+        row = result_df.iloc[selected_rank - 1]
+        seq = row["sequence"] if "sequence" in result_df.columns else None
+        if seq and isinstance(seq, str):
+            peptide_sequence = seq
 
     with st.expander("3D Structure Viewer", expanded=True):
         chain = pdb_summary.get("selected_chain", "-")
@@ -128,11 +167,18 @@ def render_viewer_section(
         ]
         if ligands:
             legend_parts.append("🟢 リガンド")
+        if peptide_sequence:
+            legend_parts.append(f"🟣 ペプチド候補 (rank {selected_rank})")
         st.caption(
             f"Chain: **{chain}** | Mode: **{mode}**"
             + (f" | Residues: {res_start}–{res_end}" if res_start and res_end else "")
             + (f" | Ligand: {', '.join(ligands)}" if ligands else "")
+            + (f" | 🟣 Peptide rank {selected_rank}: **{peptide_sequence}**" if peptide_sequence else "")
             + f"　　{'  '.join(legend_parts)}"
         )
 
-        render_structure_viewer(structure_bytes, structure_filename, pdb_summary)
+        render_structure_viewer(
+            structure_bytes, structure_filename, pdb_summary,
+            peptide_sequence=peptide_sequence,
+            pocket_centroid=pocket_centroid,
+        )

@@ -37,6 +37,8 @@ defaults = {
     "structure_source": "Upload local file",
     "pocket_charge": "negative",
     "pocket_hydrophobicity": "medium",
+    "pocket_centroid": None,
+    "last_run_structure_filename": None,  # centroid が有効な構造のファイル名
 }
 for key, val in defaults.items():
     if key not in st.session_state:
@@ -52,10 +54,21 @@ params = render_sidebar()
 # =========================
 # 3D Structure Viewer
 # =========================
+# 構造が変わっていたら古いcentroid（別構造のもの）を使わない
+_current_filename = params.get("structure_filename")
+_last_run_filename = st.session_state.get("last_run_structure_filename")
+_valid_centroid = (
+    st.session_state["pocket_centroid"]
+    if _current_filename is not None and _current_filename == _last_run_filename
+    else None
+)
+
 render_viewer_section(
     structure_bytes=params["structure_bytes"],
     structure_filename=params["structure_filename"],
     pdb_summary=params["pdb_summary"],
+    result_df=st.session_state["result_df"] if _valid_centroid is not None else None,
+    pocket_centroid=_valid_centroid,
 )
 
 
@@ -107,6 +120,8 @@ if params["run_button"]:
         )
         st.session_state["result_df"] = result_df
         st.session_state["docking_done"] = False
+        st.session_state["pocket_centroid"] = pocket_centroid
+        st.session_state["last_run_structure_filename"] = params.get("structure_filename")
         # ポケット特性を session_state に保存（説明生成に使用）
         st.session_state["pocket_charge"] = params["pocket_charge"]
         st.session_state["pocket_hydrophobicity"] = params["pocket_hydrophobicity"]
@@ -182,6 +197,10 @@ if params["run_button"]:
                 f"Selectivity computed vs. {selectivity_params['offtarget_label']}. "
                 f"Top selectivity score: {top_sel:.3f}{lam_msg}"
             )
+
+    # ビューアの再描画（Selectivity含む全処理後に実行）
+    # ビューアはページ上部で描画済みのため、pocket_centroid を反映するには再レンダリングが必要
+    st.rerun()
 
 
 # =========================

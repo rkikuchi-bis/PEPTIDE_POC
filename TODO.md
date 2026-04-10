@@ -96,11 +96,10 @@
 
 ## 次の優先タスク
 
-- [ ] **3D Viewer にペプチド重畳表示（Option 1: 理想ヘリックス配置）**
-      - `ui/structure_viewer.py` の `render_viewer_section()` を拡張
-      - `result_df` の選択候補配列を受け取り、ポケット centroid に理想ヘリックス座標を生成して py3Dmol に追加
-      - `scripts/mpnn_scorer_receptor.py` の理想ヘリックス生成コードを流用
-      - 赤色スティック or チューブで表示（受容体と色分け）
+- [x] **3D Viewer にペプチド重畳表示（Option 1: 理想ヘリックス配置）**（完了 2026-04-10）
+      - `core/helix_utils.py` 新規作成（理想ヘリックス座標生成 + PDB文字列生成、CONECTレコード付き）
+      - `ui/structure_viewer.py` 拡張: rank選択スライダー、マゼンタスティック表示
+      - `app.py`: pocket_centroid を session_state に保存、構造変更時に無効化、rerun() で再描画
 
 ## 将来タスク（優先度低）
 
