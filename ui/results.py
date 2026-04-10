@@ -44,52 +44,45 @@ def render_results(result_df, pdb_summary=None, pocket_charge="neutral", pocket_
         else:
             display_df = result_df
 
-        display_cols = [
-            # ── 順位・配列 ──
+        # デモ向けの主要カラム（先頭）と詳細カラム（後方）
+        primary_cols = [
             "rank",
             "sequence",
-            # ── 統合スコア ──
-            "selective_final_score",  # λ>0 のときランキング基準
+            "selective_final_score",
             "final_score",
-            # ── 選択性（Direction B） ──
             "selectivity_score",
-            "offtarget_rescoring_score",
-            # ── その他スコア ──
             "ml_score",
             "proteinmpnn_score",
+            "docking_score",
             "rescoring_score",
-            "gen_score",
-            "property_score",
-            # ── 基本物性 ──
             "length",
             "net_charge",
-            "avg_hydrophobicity",
-            # ── Phase A-1: ProtParam 科学的特徴量 ──
             "isoelectric_point",
             "gravy",
             "instability_index",
-            "aromaticity",
             "molecular_weight",
+        ]
+        detail_cols = [
+            "offtarget_rescoring_score",
+            "gen_score",
+            "property_score",
+            "avg_hydrophobicity",
+            "aromaticity",
             "helix_fraction",
             "turn_fraction",
             "sheet_fraction",
-            # ── スコア内訳 ──
             "charge_match_score",
             "hydrophobic_match_score",
             "stability_score",
             "complexity_score",
-            # ── Phase B-1: ドッキング ──
-            "docking_score",
-            # ── 多様性 ──
             "diversity_kept",
             "diversity_min_distance",
-            # ── モチーフ比較 ──
             "best_known_motif",
             "known_sequence_identity_max",
             "known_kmer_jaccard_max",
             "motif_compare_score",
         ]
-        display_cols = [c for c in display_cols if c in display_df.columns]
+        display_cols = [c for c in primary_cols + detail_cols if c in display_df.columns]
 
         st.dataframe(
             display_df[display_cols],
@@ -104,7 +97,7 @@ def render_results(result_df, pdb_summary=None, pocket_charge="neutral", pocket_
 
             # ── Direction A: 推薦理由（説明ボックス） ──────────────────────
             explanation = explain_candidate(row, pocket_charge, pocket_hydrophobicity)
-            st.info(f"**Recommendation Reason / 推薦理由（Direction A: Explainability）**\n\n{explanation}")
+            st.info(f"**推薦理由 / Recommendation**\n\n{explanation}")
 
             st.markdown(f"**Sequence:** `{row['sequence']}`")
             if "selective_final_score" in row.index and pd.notna(row["selective_final_score"]):
@@ -217,4 +210,7 @@ def render_results(result_df, pdb_summary=None, pocket_charge="neutral", pocket_
             if "rescoring_notes" in row.index:
                 st.write(f"- Notes: {row['rescoring_notes']}")
     else:
-        st.info("Adjust settings in the sidebar and click 'Generate and Filter'. / 左の設定を調整して、Generate and Filter を押してください。")
+        st.info(
+            "👈 サイドバーで構造ファイルを読み込み、**▶ Run** を押すと候補ペプチドが生成されます。\n\n"
+            "Load a structure in the sidebar and click **▶ Run** to generate peptide candidates."
+        )

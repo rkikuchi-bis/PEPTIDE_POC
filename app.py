@@ -13,12 +13,12 @@ from ui.structure_viewer import render_viewer_section
 # =========================
 # App config
 # =========================
-st.set_page_config(page_title="Peptide Discovery PoC", layout="wide")
+st.set_page_config(page_title="Peptide Discovery PoC", layout="wide", page_icon="🧬")
 
-st.title("Peptide Discovery PoC")
+st.title("🧬 Peptide Discovery PoC")
 st.caption(
-    "Input → Candidate Generation → Filter → Rescoring → Diversity Control → Motif Comparison → Output  "
-    "｜  入力 → 候補生成 → フィルタ → 再スコア → 多様性制御 → 既知モチーフ比較 → 表示"
+    "タンパク質ポケット構造を入力として、結合候補ペプチドを生成・スコアリング・可視化する創薬支援ツール。"
+    "  |  Generates, scores, and visualizes peptide candidates from a protein pocket structure."
 )
 
 
@@ -126,16 +126,13 @@ if params["run_button"]:
         st.session_state["pocket_charge"] = params["pocket_charge"]
         st.session_state["pocket_hydrophobicity"] = params["pocket_hydrophobicity"]
 
-        # 受容体条件付きスコアリングの使用状況を表示
-        if pocket_centroid is not None:
-            cx, cy, cz = pocket_centroid
-            st.success(
-                f"Done. Receptor-conditioned ProteinMPNN enabled "
-                f"(centroid: {cx:.1f}, {cy:.1f}, {cz:.1f}). "
-                f"Saved CSV to: {saved_path}"
-            )
-        else:
-            st.success(f"Done. Saved CSV to: {saved_path}")
+        # 完了メッセージ
+        n_candidates = len(result_df) if result_df is not None else 0
+        mpnn_mode = "受容体条件付き ProteinMPNN" if pocket_centroid is not None else "ProteinMPNN (構造フリー)"
+        st.success(
+            f"完了 ✅  {n_candidates} 件の候補を生成しました。"
+            f"  スコアリング: {mpnn_mode}。  CSV: `{saved_path}`"
+        )
 
     # =========================
     # Selectivity (Phase C-1)

@@ -653,7 +653,7 @@ def render_sidebar() -> dict:
                 )
                 offtarget_hydrophobicity = st.selectbox(
                     "Off-target pocket hydrophobicity", hydrophobicity_options,
-                    index=hydrophobicity_options.index(default_offtarget_hydrophobicity),
+                    index=hydrophobicity_options.index(offtarget_hydrophobicity),
                     key="offtarget_hydrophobicity",
                 )
 
@@ -687,7 +687,14 @@ def render_sidebar() -> dict:
                 }
 
         # ── Run button ───────────────────────────────
-        run_button = st.button("Generate and Filter", type="primary")
+        _no_structure = uploaded_structure is None
+        if mode == "Simple" and _no_structure:
+            st.info("構造ファイルをアップロードまたは RCSB から検索してください。")
+        run_button = st.button(
+            "▶ Run" if mode == "Simple" else "Generate and Filter",
+            type="primary",
+            disabled=(_no_structure and mode == "Simple"),
+        )
 
         # ── Structure summary ─────────────────────────
         if pdb_parse_error is not None:

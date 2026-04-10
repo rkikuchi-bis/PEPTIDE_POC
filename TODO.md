@@ -94,15 +94,20 @@
 - [x] Known off-target DB から選択 → RCSB 自動DL フロー
 - [x] オフターゲット構造アップロード → pocket centroid 自動計算
 
-## 次の優先タスク
+## デモ品質改善（完了 2026-04-10）
 
-- [x] **3D Viewer にペプチド重畳表示（Option 1: 理想ヘリックス配置）**（完了 2026-04-10）
-      - `core/helix_utils.py` 新規作成（理想ヘリックス座標生成 + PDB文字列生成、CONECTレコード付き）
-      - `ui/structure_viewer.py` 拡張: rank選択スライダー、マゼンタスティック表示
-      - `app.py`: pocket_centroid を session_state に保存、構造変更時に無効化、rerun() で再描画
+- [x] Bug fix: `default_offtarget_hydrophobicity` 未定義変数（Expert Selectivity 使用時にクラッシュ）
+- [x] Simple mode: 構造未ロード時に Run ボタンを disabled + ガイドメッセージ
+- [x] Simple mode: Run ボタンラベルを「▶ Run」に変更
+- [x] app.py: タイトルに emoji 追加、キャプション日英化
+- [x] app.py: 生成完了メッセージを「完了 ✅ N件」形式に簡潔化
+- [x] results.py: 初期状態メッセージを日英化・改善
+- [x] results.py: 表示カラムをデモ向けに再整理（主要スコアを先頭、詳細を後方）
+- [x] results.py: 推薦理由ラベルを短縮
 
 ## 将来タスク（優先度低）
 
+- [ ] Phase C-2: ドッキングスコア差分による選択性（選択性の根本的解決）
 - [ ] 3D Viewer ペプチド重畳: Option 2（ESMFold骨格）・Option 3（Vinaドッキングポーズ保存）
 - [ ] AlphaFold2-Multimer による結合構造再予測（B-3: 長期・高コスト）
 - [ ] obabel 依存削減（meeko が arm64 対応次第）

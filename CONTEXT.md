@@ -1,5 +1,5 @@
 # Current State
-最終更新: 2026-04-10（Simple/Expert mode 分割、Off-target DB、3D Viewer ペプチド重畳表示は未着手）
+最終更新: 2026-04-10（デモ品質改善・UIポリッシュ完了）
 
 ---
 
@@ -189,9 +189,23 @@
   - 構造ファイルが変わった場合は centroid を無効化（古い centroid の誤適用防止）
   - Run 完了後に `st.rerun()` で再描画
 
+### デモ品質改善（完了 2026-04-10）
+- **Bug fix**: `default_offtarget_hydrophobicity` 未定義変数バグを修正（Expert Selectivity mode）
+- **Simple mode UX**:
+  - 構造未ロード時に Run ボタンを disabled にしてガイドメッセージを表示
+  - Simple mode の Run ボタンラベルを「▶ Run」に変更（Expert mode は「Generate and Filter」を維持）
+- **タイトル・メッセージ**:
+  - アプリタイトルに emoji（🧬）追加、キャプションを日英両言語で簡潔化
+  - 生成完了メッセージを「完了 ✅ N件の候補を生成」形式に変更
+- **Results パネル**:
+  - 初期状態のガイドメッセージを日英両言語で改善
+  - デフォルト表示カラムをデモ向けに再整理（主要スコア・物性を先頭に、細部カラムを後方に）
+  - 推薦理由ラベルを「推薦理由 / Recommendation」に短縮
+
 ## Next Steps
 
 ### 将来検討（優先度低）
+- Phase C-2: ドッキングスコア差分による選択性（選択性の根本的解決）
 - 3D Viewer ペプチド重畳: Option 2（ESMFold骨格）・Option 3（Vinaドッキングポーズ保存）
 - obabel 依存削減（meeko が arm64 対応次第）
 - AlphaFold2-Multimer による結合構造再予測（B-3: 長期・高コスト）
