@@ -4,6 +4,7 @@ from datetime import datetime
 import pandas as pd
 
 from core.generator import generate_candidates
+from core.variant_generator import generate_variants
 from core.filters import apply_filters, add_basic_properties
 from core.rescorer import rescore_candidates, apply_esmfold_rescoring
 from core.utils import save_run_csv
@@ -31,23 +32,43 @@ def run_pipeline(
     structure_text: str | None = None,
     file_format: str | None = None,
     pocket_centroid: tuple[float, float, float] | None = None,
+    seed_sequence: str | None = None,
+    variant_strategies: list[str] | None = None,
 ) -> tuple[pd.DataFrame, str]:
-    candidates = generate_candidates(
-        n=num_candidates,
-        min_len=min_len,
-        max_len=max_len,
-        pocket_charge=pocket_charge,
-        pocket_hydrophobicity=pocket_hydrophobicity,
-        avoid_residues=["C"] if avoid_cysteine else [],
-    )
+    avoid_residues = ["C"] if avoid_cysteine else []
+
+    if seed_sequence:
+        # シード配列が指定された場合はバリアント生成モード
+        candidates = generate_variants(
+            seed_sequence=seed_sequence,
+            strategies=variant_strategies or ["single_mutant", "truncation"],
+            pocket_charge=pocket_charge,
+            pocket_hydrophobicity=pocket_hydrophobicity,
+            avoid_residues=avoid_residues,
+        )
+        # 長さフィルターをシード配列の長さ範囲に合わせる
+        effective_min_len = max(4, len(seed_sequence) - 3)
+        effective_max_len = len(seed_sequence)
+    else:
+        # シードなし: 従来のランダム生成
+        candidates = generate_candidates(
+            n=num_candidates,
+            min_len=min_len,
+            max_len=max_len,
+            pocket_charge=pocket_charge,
+            pocket_hydrophobicity=pocket_hydrophobicity,
+            avoid_residues=avoid_residues,
+        )
+        effective_min_len = min_len
+        effective_max_len = max_len
 
     df = pd.DataFrame(candidates)
     df = add_basic_properties(df)
 
     filtered_df = apply_filters(
         df,
-        min_len=min_len,
-        max_len=max_len,
+        min_len=effective_min_len,
+        max_len=effective_max_len,
         max_abs_charge=max_abs_charge,
         max_hydrophobicity=max_hydrophobicity,
         max_repeat_residue=max_repeat_residue,
@@ -70,7 +91,11 @@ def run_pipeline(
         ascending=False,
     ).reset_index(drop=True)
 
-    if use_diversity_filter:
+    # バリアント生成モードでは多様性フィルターを無効化する
+    # （単一変異体は意図的に類似しており、全変異体を比較するのが目的）
+    effective_diversity = use_diversity_filter and not seed_sequence
+
+    if effective_diversity:
         rescored_df = diversify_candidates(
             rescored_df,
             sequence_col="sequence",

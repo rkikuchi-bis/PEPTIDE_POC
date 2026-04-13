@@ -686,6 +686,55 @@ def render_sidebar() -> dict:
                     "pdb_summary_offtarget": pdb_summary_offtarget,
                 }
 
+        # ── Seed sequence（バリアント生成）────────────
+        st.markdown("### Seed Sequence")
+        seed_sequence_input = st.text_input(
+            "Known binding sequence (optional)",
+            value="",
+            placeholder="例: KLAKLAK",
+            key="seed_sequence_input",
+            help=(
+                "既知の結合ペプチド配列を入力すると、ランダム生成の代わりにバリアントを網羅生成します。\n\n"
+                "If a known binding sequence is provided, variants are exhaustively generated "
+                "instead of random sequences."
+            ),
+        )
+        seed_sequence = None
+        variant_strategies = None
+        if seed_sequence_input.strip():
+            from core.variant_generator import validate_seed_sequence, estimate_variant_count
+            is_valid, err_msg = validate_seed_sequence(seed_sequence_input)
+            if is_valid:
+                seed_sequence = seed_sequence_input.strip().upper()
+                if mode == "Expert":
+                    _strategy_labels = {
+                        "single_mutant": "Single mutant scan — 各位置を全アミノ酸に変換",
+                        "alanine_scan":  "Alanine scan — 各位置をAlaに置換",
+                        "truncation":    "Truncation — N/C末端から最大3残基削る",
+                        "scramble":      "Scramble — ランダムシャッフル（対照用）",
+                    }
+                    selected_strategies = st.multiselect(
+                        "Variant strategies",
+                        options=list(_strategy_labels.keys()),
+                        default=["single_mutant", "truncation"],
+                        format_func=lambda x: _strategy_labels[x],
+                    )
+                    variant_strategies = selected_strategies if selected_strategies else ["single_mutant"]
+                else:
+                    # Simple mode: 自動選択
+                    variant_strategies = ["single_mutant", "truncation"]
+
+                n_est = estimate_variant_count(
+                    seed_sequence, variant_strategies,
+                    avoid_residues=["C"] if avoid_cysteine else [],
+                )
+                st.caption(
+                    f"シード: `{seed_sequence}`（{len(seed_sequence)} AA）  "
+                    f"予測バリアント数: 約 {n_est} 件"
+                )
+            else:
+                st.warning(f"配列エラー: {err_msg}")
+
         # ── Run button ───────────────────────────────
         _no_structure = uploaded_structure is None
         if mode == "Simple" and _no_structure:
@@ -751,4 +800,6 @@ def render_sidebar() -> dict:
         "structure_filename": structure_filename,
         "run_button": run_button,
         "selectivity_params": selectivity_params,
+        "seed_sequence": seed_sequence,
+        "variant_strategies": variant_strategies,
     }

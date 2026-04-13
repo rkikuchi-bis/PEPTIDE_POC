@@ -117,6 +117,8 @@ if params["run_button"]:
             structure_text=structure_text,
             file_format=file_format,
             pocket_centroid=pocket_centroid,
+            seed_sequence=params.get("seed_sequence"),
+            variant_strategies=params.get("variant_strategies"),
         )
         st.session_state["result_df"] = result_df
         st.session_state["docking_done"] = False
@@ -129,9 +131,11 @@ if params["run_button"]:
         # 完了メッセージ
         n_candidates = len(result_df) if result_df is not None else 0
         mpnn_mode = "受容体条件付き ProteinMPNN" if pocket_centroid is not None else "ProteinMPNN (構造フリー)"
+        _seed = params.get("seed_sequence")
+        _gen_mode = f"バリアント生成（シード: {_seed}）" if _seed else "ランダム生成"
         st.success(
             f"完了 ✅  {n_candidates} 件の候補を生成しました。"
-            f"  スコアリング: {mpnn_mode}。  CSV: `{saved_path}`"
+            f"  生成: {_gen_mode}。  スコアリング: {mpnn_mode}。  CSV: `{saved_path}`"
         )
 
     # =========================
