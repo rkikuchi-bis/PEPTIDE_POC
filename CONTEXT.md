@@ -202,10 +202,28 @@
   - デフォルト表示カラムをデモ向けに再整理（主要スコア・物性を先頭に、細部カラムを後方に）
   - 推薦理由ラベルを「推薦理由 / Recommendation」に短縮
 
+### Phase C-2: ドッキングスコア差分による選択性（実装・動作確認完了 2026-04-13）
+- `core/selectivity.py` — `compute_docking_selectivity()` 追加
+  - 前提: Phase B-1（ターゲットドッキング）実行済み
+  - オフターゲット受容体を PDBQT 変換 → Vina でドッキング
+  - `docking_selectivity_score = docking_score_offtarget - docking_score_target`
+  - 正値 = ターゲット選択的（ターゲット結合が強い）、閾値 ±1.0 kcal/mol で 🟢/🟡/🔴
+  - **フィルタ**: target または offtarget が正値（剛体ドッキング失敗）の行は NaN
+- `core/docking.py` — `_prepare_receptor_pdbqt()` の mmCIF バグ修正
+  - 修正前: mmCIF の ATOM 行を PDB 形式として obabel に渡すため座標読み取り失敗 → スコア 0
+  - 修正後: mmCIF は BioPython (MMCIFParser + PDBIO) で PDB 形式に変換してから obabel に渡す
+- `app.py` — `docking_selectivity_done` session state + "🎯 Run Docking Selectivity" ボタン
+  - 表示条件: docking_done + Expert Selectivity + オフターゲット構造 + Vina 利用可能
+- `ui/results.py` — テーブルに `docking_selectivity_score` / `docking_score_offtarget` を追加
+  - 詳細パネルに 🟢/🟡/🔴 表示、正値 docking_score には ⚠️ 警告
+- **動作確認済み** (2itx.cif ターゲット / 1EPV.cif BCR-ABL オフターゲット)
+  - 有効 4/10 件、うち 3 件が 🟢 ターゲット選択的（+2.45〜+4.27 kcal/mol）
+- **制約**: 6 残基以上の長鎖ペプチドは剛体ドッキング → 正値スコアが混在（相対比較のみ有効）
+
 ## Next Steps
 
 ### 将来検討（優先度低）
-- Phase C-2: ドッキングスコア差分による選択性（選択性の根本的解決）
+
 - 3D Viewer ペプチド重畳: Option 2（ESMFold骨格）・Option 3（Vinaドッキングポーズ保存）
 - obabel 依存削減（meeko が arm64 対応次第）
 - AlphaFold2-Multimer による結合構造再予測（B-3: 長期・高コスト）

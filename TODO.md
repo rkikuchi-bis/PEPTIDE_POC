@@ -105,9 +105,18 @@
 - [x] results.py: 表示カラムをデモ向けに再整理（主要スコアを先頭、詳細を後方）
 - [x] results.py: 推薦理由ラベルを短縮
 
+## Phase C-2 完了 ✅（2026-04-13）
+
+- [x] Phase C-2: ドッキングスコア差分による選択性（選択性の根本的解決）
+      - `core/selectivity.py` — `compute_docking_selectivity()` 追加（正値フィルタ付き）
+      - `core/docking.py` — mmCIF 受容体の PDBQT 変換バグ修正（BioPython 経由で PDB 変換）
+      - `app.py` — `docking_selectivity_done` session state + "🎯 Run Docking Selectivity" ボタン追加
+      - `ui/results.py` — `docking_selectivity_score` / `docking_score_offtarget` 追加、正値に ⚠️ 警告
+      - 動作確認済み: 2itx(CDK2) vs 1EPV(BCR-ABL)、4/10 件で有効スコア取得
+
 ## 将来タスク（優先度低）
 
-- [ ] Phase C-2: ドッキングスコア差分による選択性（選択性の根本的解決）
+
 - [ ] 3D Viewer ペプチド重畳: Option 2（ESMFold骨格）・Option 3（Vinaドッキングポーズ保存）
 - [ ] AlphaFold2-Multimer による結合構造再予測（B-3: 長期・高コスト）
 - [ ] obabel 依存削減（meeko が arm64 対応次第）

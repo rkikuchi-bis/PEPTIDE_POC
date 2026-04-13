@@ -58,10 +58,12 @@ def render_results(result_df, pdb_summary=None, pocket_charge="neutral", pocket_
             "selective_final_score",
             "final_score",
             "selectivity_score",
+            "docking_selectivity_score",
             "bioactivity_score",
             "ml_score",
             "proteinmpnn_score",
             "docking_score",
+            "docking_score_offtarget",
             "rescoring_score",
             "length",
             "net_charge",
@@ -165,7 +167,22 @@ def render_results(result_df, pdb_summary=None, pocket_charge="neutral", pocket_
                 )
             if "docking_score" in row.index and pd.notna(row["docking_score"]):
                 mode = row.get("docking_mode", "rigid") if "docking_mode" in row.index else "rigid"
-                st.write(f"- Docking score (Phase B-1, {mode}): {row['docking_score']:.2f} kcal/mol")
+                ds_val = float(row["docking_score"])
+                ds_warn = " ⚠️ 正値=剛体ドッキング失敗（参考不可）" if ds_val > 0 else ""
+                st.write(f"- Docking score (Phase B-1, {mode}): {ds_val:.2f} kcal/mol{ds_warn}")
+            if "docking_selectivity_score" in row.index and pd.notna(row["docking_selectivity_score"]):
+                ds = float(row["docking_selectivity_score"])
+                ds_color = "🟢" if ds >= 1.0 else ("🔴" if ds <= -1.0 else "🟡")
+                offtarget_label = str(row.get("offtarget_label", "Off-target"))
+                st.write(
+                    f"- **Docking Selectivity (Phase C-2)**: {ds_color} {ds:+.2f} kcal/mol "
+                    f"(vs {offtarget_label}; positive = target-selective / 正値=ターゲット選択的)"
+                )
+                if "docking_score_offtarget" in row.index and pd.notna(row["docking_score_offtarget"]):
+                    st.write(
+                        f"  - Target docking: {row['docking_score']:.2f} / "
+                        f"Off-target docking: {row['docking_score_offtarget']:.2f} kcal/mol"
+                    )
             if "ml_score" in row.index and pd.notna(row["ml_score"]):
                 st.write(f"- ML binding probability (Phase A-2): {row['ml_score']:.3f}")
             if "proteinmpnn_score" in row.index and pd.notna(row["proteinmpnn_score"]):

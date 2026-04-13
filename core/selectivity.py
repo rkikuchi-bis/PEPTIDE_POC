@@ -1,5 +1,5 @@
 """
-Direction B: Selectivity（選択性スコアリング）— Phase C-1
+Direction B: Selectivity（選択性スコアリング）— Phase C-1 / C-2
 
 LigandForge との差別化:
   LigandForge は「1ターゲットに結合するペプチドを生成」するだけ。
@@ -84,5 +84,80 @@ def compute_selectivity(
         out["rescoring_score"] - out["offtarget_rescoring_score"]
     ).round(4)
     out["offtarget_label"] = offtarget_label
+
+    return out
+
+
+def compute_docking_selectivity(
+    result_df: pd.DataFrame,
+    receptor_pdbqt_offtarget: str,
+    box_center_offtarget: tuple[float, float, float],
+    box_size_offtarget: tuple[float, float, float] = (20.0, 20.0, 20.0),
+    top_n: int = 15,
+    exhaustiveness: int = 8,
+) -> pd.DataFrame:
+    """
+    Phase C-2: ドッキングスコア差分による選択性。
+
+    ターゲットへの docking_score（Phase B-1 で計算済み）と
+    オフターゲットへの docking_score の差から選択性を定量化する。
+
+    Vina スコアは負値が強い結合を示す（単位: kcal/mol）。
+    docking_selectivity_score = docking_score_offtarget - docking_score_target
+        正値 = ターゲット選択的（ターゲットへの結合がより強い）
+        負値 = オフターゲット選択的（避けるべき候補）
+
+    前提: result_df に docking_score カラムが存在すること（Phase B-1 実行後）。
+
+    追加カラム:
+        docking_score_offtarget      - オフターゲット Vina スコア [kcal/mol]
+        docking_selectivity_score    - docking_score_offtarget - docking_score_target
+    """
+    from core.docking import dock_peptide, is_vina_available, FLEXIBLE_DOCKING_MAX_LENGTH
+
+    if result_df.empty:
+        return result_df
+
+    if "docking_score" not in result_df.columns:
+        return result_df
+
+    if not is_vina_available():
+        return result_df
+
+    out = result_df.copy()
+    out["docking_score_offtarget"] = float("nan")
+
+    for idx in out.index:
+        target_score = out.at[idx, "docking_score"]
+        if pd.isna(target_score):
+            continue  # ターゲットドッキング未実施の行はスキップ
+
+        seq = out.at[idx, "sequence"]
+        use_flexible = len(seq) <= FLEXIBLE_DOCKING_MAX_LENGTH
+
+        score_ot = dock_peptide(
+            sequence=seq,
+            receptor_pdbqt_path=receptor_pdbqt_offtarget,
+            box_center=box_center_offtarget,
+            box_size=box_size_offtarget,
+            exhaustiveness=exhaustiveness,
+            flexible=use_flexible,
+        )
+        if score_ot is not None:
+            out.at[idx, "docking_score_offtarget"] = score_ot
+
+    # 差分計算: offtarget - target（正値 = ターゲット選択的）
+    # 剛体ドッキング失敗（正値スコア）を含む行は信頼性がないため NaN にする
+    has_ot = out["docking_score_offtarget"].notna()
+    valid = (
+        has_ot
+        & (out["docking_score"] <= 0)
+        & (out["docking_score_offtarget"] <= 0)
+    )
+    out["docking_selectivity_score"] = float("nan")
+    out.loc[valid, "docking_selectivity_score"] = (
+        out.loc[valid, "docking_score_offtarget"]
+        - out.loc[valid, "docking_score"]
+    ).round(3)
 
     return out

@@ -216,15 +216,37 @@ FLEXIBLE_DOCKING_MAX_LENGTH = 5
 
 def _prepare_receptor_pdbqt(pdb_path: str, out_path: str) -> bool:
     """
-    受容体 PDB → obabel 剛体 PDBQT ファイル。
+    受容体 PDB / mmCIF → obabel 剛体 PDBQT ファイル。
 
-    タンパク質の ATOM 行のみ抽出してから obabel -xr で変換する。
+    mmCIF (.cif) の場合は BioPython で PDB 形式に変換してから obabel に渡す。
+    PDB の場合は ATOM 行のみ抽出して obabel に渡す。
     成功時 True、失敗時 False を返す。
     """
     try:
-        # HETATM（リガンド・水）を除いてタンパク質のみ抽出
-        with open(pdb_path) as f:
-            lines = f.readlines()
+        is_cif = pdb_path.lower().endswith((".cif", ".mmcif"))
+
+        if is_cif:
+            # mmCIF → BioPython で PDB 文字列に変換（固定幅 PDB 形式）
+            import io
+            from Bio.PDB import MMCIFParser, PDBIO, Select
+
+            class ProteinOnly(Select):
+                def accept_residue(self, residue):
+                    return residue.get_id()[0] == " "  # HETATM を除外
+
+            parser = MMCIFParser(QUIET=True)
+            structure = parser.get_structure("receptor", pdb_path)
+            pdbio = PDBIO()
+            pdbio.set_structure(structure)
+            buf = io.StringIO()
+            pdbio.save(buf, select=ProteinOnly())
+            pdb_text = buf.getvalue()
+            lines = pdb_text.splitlines(keepends=True)
+        else:
+            with open(pdb_path) as f:
+                lines = f.readlines()
+
+        # ATOM / TER / END のみ残す（mmCIF 変換後は既に HETATM 除去済みだが念のため）
         protein_lines = [
             l for l in lines
             if l.startswith("ATOM") or l.startswith("TER") or l.startswith("END")

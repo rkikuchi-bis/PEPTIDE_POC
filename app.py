@@ -28,6 +28,7 @@ st.caption(
 defaults = {
     "result_df": None,
     "docking_done": False,
+    "docking_selectivity_done": False,
     "admet_done": False,
     "viewer_selected_rank": 1,
     "rcsb_results": [],
@@ -124,6 +125,7 @@ if params["run_button"]:
         )
         st.session_state["result_df"] = result_df
         st.session_state["docking_done"] = False
+        st.session_state["docking_selectivity_done"] = False
         st.session_state["admet_done"] = False
         st.session_state["viewer_selected_rank"] = 1
         st.session_state["pocket_centroid"] = pocket_centroid
@@ -256,6 +258,74 @@ if (
                     os.unlink(tmp_pdb_path)
     else:
         st.info("ドッキングには構造ファイルのアップロードが必要です。")
+
+
+# =========================
+# Docking Selectivity (Phase C-2)
+# =========================
+_sel_params = params.get("selectivity_params")
+_has_ot_structure = (
+    _sel_params is not None
+    and _sel_params.get("offtarget_structure_bytes") is not None
+    and _sel_params.get("pdb_summary_offtarget") is not None
+)
+if (
+    st.session_state["docking_done"]
+    and _has_ot_structure
+    and st.session_state["result_df"] is not None
+    and not st.session_state["docking_selectivity_done"]
+):
+    from core.docking import is_vina_available
+    if is_vina_available():
+        dp = params.get("docking_params") or {}
+        if st.button("🎯 Run Docking Selectivity (Phase C-2)", type="secondary"):
+            from core.selectivity import compute_docking_selectivity
+            from core.docking import compute_pocket_center, prepare_receptor_pdbqt
+
+            ot_bytes = _sel_params["offtarget_structure_bytes"]
+            ot_filename = _sel_params["offtarget_structure_filename"]
+            pdb_summary_ot = _sel_params["pdb_summary_offtarget"]
+            offtarget_label = _sel_params.get("offtarget_label", "Off-target")
+
+            with st.spinner(f"Preparing off-target receptor and docking vs. {offtarget_label}..."):
+                # オフターゲット受容体を一時ファイルに書き出し PDBQT 変換
+                suffix_ot = "." + ot_filename.rsplit(".", 1)[-1]
+                with tempfile.NamedTemporaryFile(suffix=suffix_ot, delete=False) as tmp_ot:
+                    tmp_ot.write(ot_bytes)
+                    tmp_ot_path = tmp_ot.name
+
+                try:
+                    receptor_pdbqt_ot = prepare_receptor_pdbqt(tmp_ot_path)
+                    if receptor_pdbqt_ot is None:
+                        st.error("オフターゲット受容体 PDBQT の準備に失敗しました。")
+                    else:
+                        # オフターゲットポケット中心を計算
+                        box_center_ot = compute_pocket_center(ot_bytes, ot_filename, pdb_summary_ot)
+                        if box_center_ot is None:
+                            st.error("オフターゲットのポケット中心座標を計算できませんでした。")
+                        else:
+                            box_size_ot = dp.get("box_size", (20.0, 20.0, 20.0))
+                            exhaustiveness_ot = dp.get("exhaustiveness", 8)
+
+                            result_df = compute_docking_selectivity(
+                                st.session_state["result_df"],
+                                receptor_pdbqt_offtarget=receptor_pdbqt_ot,
+                                box_center_offtarget=box_center_ot,
+                                box_size_offtarget=box_size_ot,
+                                exhaustiveness=exhaustiveness_ot,
+                            )
+                            st.session_state["result_df"] = result_df
+                            st.session_state["docking_selectivity_done"] = True
+                            n_scored = result_df["docking_selectivity_score"].notna().sum()
+                            top_sel = result_df["docking_selectivity_score"].max()
+                            st.success(
+                                f"Docking Selectivity (Phase C-2) 完了 ✅  "
+                                f"{n_scored} 件をスコアリング。  "
+                                f"Top docking selectivity: {top_sel:.2f} kcal/mol  "
+                                f"(vs {offtarget_label})"
+                            )
+                finally:
+                    os.unlink(tmp_ot_path)
 
 
 # =========================
