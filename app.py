@@ -28,6 +28,8 @@ st.caption(
 defaults = {
     "result_df": None,
     "docking_done": False,
+    "admet_done": False,
+    "viewer_selected_rank": 1,
     "rcsb_results": [],
     "rcsb_selected_index": 0,
     "downloaded_structure_bytes": None,
@@ -122,6 +124,8 @@ if params["run_button"]:
         )
         st.session_state["result_df"] = result_df
         st.session_state["docking_done"] = False
+        st.session_state["admet_done"] = False
+        st.session_state["viewer_selected_rank"] = 1
         st.session_state["pocket_centroid"] = pocket_centroid
         st.session_state["last_run_structure_filename"] = params.get("structure_filename")
         # ポケット特性を session_state に保存（説明生成に使用）
@@ -252,6 +256,33 @@ if (
                     os.unlink(tmp_pdb_path)
     else:
         st.info("ドッキングには構造ファイルのアップロードが必要です。")
+
+
+# =========================
+# ADMET (Peptide Ranker)
+# =========================
+if (
+    st.session_state["result_df"] is not None
+    and not st.session_state["admet_done"]
+):
+    top_n_admet = min(20, len(st.session_state["result_df"]))
+    if st.button(
+        f"🧪 Score Bioactivity (top {top_n_admet})",
+        type="secondary",
+    ):
+        from core.admet_scorer import score_top_candidates
+
+        with st.spinner("Scoring bioactivity..."):
+            result_df = score_top_candidates(
+                st.session_state["result_df"],
+                top_n=top_n_admet,
+            )
+            st.session_state["result_df"] = result_df
+            st.session_state["admet_done"] = True
+            n_scored = result_df["bioactivity_score"].notna().sum()
+            st.success(
+                f"生物活性スコア計算完了 ✅  上位 {n_scored} 件をスコアリングしました。"
+            )
 
 
 # =========================

@@ -2,10 +2,16 @@ import pandas as pd
 import streamlit as st
 
 from core.explainer import explain_candidate
+from core.variant_generator import format_mutation_label
 
 
 def render_results(result_df, pdb_summary=None, pocket_charge="neutral", pocket_hydrophobicity="medium"):
     if result_df is not None:
+        # source カラムがあればバリアントモード: 表示用 mutation 列を生成
+        if "source" in result_df.columns:
+            result_df = result_df.copy()
+            result_df["mutation"] = result_df["source"].apply(format_mutation_label)
+
         if pdb_summary is not None:
             st.markdown("**Selected structure summary**")
             c1, c2, c3, c4 = st.columns(4)
@@ -48,9 +54,11 @@ def render_results(result_df, pdb_summary=None, pocket_charge="neutral", pocket_
         primary_cols = [
             "rank",
             "sequence",
+            "mutation",
             "selective_final_score",
             "final_score",
             "selectivity_score",
+            "bioactivity_score",
             "ml_score",
             "proteinmpnn_score",
             "docking_score",
@@ -63,6 +71,7 @@ def render_results(result_df, pdb_summary=None, pocket_charge="neutral", pocket_
             "molecular_weight",
         ]
         detail_cols = [
+            "source",
             "offtarget_rescoring_score",
             "gen_score",
             "property_score",
@@ -84,15 +93,30 @@ def render_results(result_df, pdb_summary=None, pocket_charge="neutral", pocket_
         ]
         display_cols = [c for c in primary_cols + detail_cols if c in display_df.columns]
 
+        col_config = {}
+        if "bioactivity_score" in display_cols:
+            col_config["bioactivity_score"] = st.column_config.ProgressColumn(
+                label="bioactivity_score ★",
+                min_value=0.0,
+                max_value=1.0,
+                format="%.3f",
+            )
+
         st.dataframe(
             display_df[display_cols],
+            column_config=col_config or None,
             width="stretch",
             height=500,
         )
 
         st.subheader("Top candidate details")
         if len(result_df) > 0:
-            selected_rank = st.selectbox("Select rank", result_df["rank"].tolist(), index=0)
+            selected_rank = st.selectbox(
+                "Select rank",
+                result_df["rank"].tolist(),
+                index=0,
+                key="viewer_selected_rank",
+            )
             row = result_df[result_df["rank"] == selected_rank].iloc[0]
 
             # ── Direction A: 推薦理由（説明ボックス） ──────────────────────
@@ -104,6 +128,8 @@ def render_results(result_df, pdb_summary=None, pocket_charge="neutral", pocket_
             )
 
             st.markdown(f"**Sequence:** `{row['sequence']}`")
+            if "mutation" in row.index and pd.notna(row["mutation"]):
+                st.markdown(f"**Mutation:** {row['mutation']}")
             if "selective_final_score" in row.index and pd.notna(row["selective_final_score"]):
                 sel_fs = float(row["selective_final_score"])
                 fs = float(row["final_score"])
@@ -130,6 +156,13 @@ def render_results(result_df, pdb_summary=None, pocket_charge="neutral", pocket_
                         f"Off-target rescoring: {row['offtarget_rescoring_score']:.3f}"
                     )
 
+            if "bioactivity_score" in row.index and pd.notna(row["bioactivity_score"]):
+                pr = float(row["bioactivity_score"])
+                pr_color = "🟢" if pr >= 0.6 else ("🟡" if pr >= 0.4 else "🔴")
+                st.write(
+                    f"- **Bioactivity score (heuristic)**: {pr_color} {pr:.3f}"
+                    f"  (0〜1; ≥0.6 = high potential; GRAVY・安定性・長さ・芳香族性・電荷の加重平均)"
+                )
             if "docking_score" in row.index and pd.notna(row["docking_score"]):
                 mode = row.get("docking_mode", "rigid") if "docking_mode" in row.index else "rigid"
                 st.write(f"- Docking score (Phase B-1, {mode}): {row['docking_score']:.2f} kcal/mol")

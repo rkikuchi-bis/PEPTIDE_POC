@@ -105,14 +105,14 @@ def generate_variants(
                 if aa == original_aa or aa in avoid:
                     continue
                 variant = seed[:i] + aa + seed[i + 1:]
-                add(variant, "single_mutant")
+                add(variant, f"{original_aa}{i + 1}{aa}")
 
     if "alanine_scan" in strategies:
         for i, original_aa in enumerate(seed):
             if original_aa == "A":
                 continue
             variant = seed[:i] + "A" + seed[i + 1:]
-            add(variant, "alanine_scan")
+            add(variant, f"{original_aa}{i + 1}A(ala)")
 
     if "truncation" in strategies:
         min_keep = max(4, len(seed) - 3)
@@ -132,3 +132,39 @@ def generate_variants(
             add(variant, "scramble")
 
     return candidates
+
+
+def format_mutation_label(source: str) -> str:
+    """
+    generate_variants() が付与した source 文字列を表示用にフォーマットする。
+
+    例:
+        "seed"           → "Seed"
+        "K4A"            → "K4→A"
+        "K4A(ala)"       → "K4→A (Ala scan)"
+        "n_truncation_2" → "N-trunc ×2"
+        "c_truncation_1" → "C-trunc ×1"
+        "scramble"       → "Scramble"
+    """
+    if source == "seed":
+        return "Seed"
+    if source == "scramble":
+        return "Scramble"
+    if source.startswith("n_truncation_"):
+        n = source.split("_")[-1]
+        return f"N-trunc ×{n}"
+    if source.startswith("c_truncation_"):
+        n = source.split("_")[-1]
+        return f"C-trunc ×{n}"
+    if source.endswith("(ala)"):
+        # "{orig}{pos}A(ala)" 形式
+        core = source[:-5]          # "(ala)" を除去
+        orig, pos, new_aa = core[0], core[1:-1], core[-1]
+        return f"{orig}{pos}→{new_aa} (Ala scan)"
+    # "single_mutant" 形式: "{orig}{pos}{new}"（先頭1文字・末尾1文字がAA、中間が位置番号）
+    if len(source) >= 3 and source[0].isalpha() and source[-1].isalpha():
+        orig, pos, new_aa = source[0], source[1:-1], source[-1]
+        if pos.isdigit():
+            return f"{orig}{pos}→{new_aa}"
+    # 旧形式（後方互換）
+    return source

@@ -138,18 +138,19 @@ def render_viewer_section(
     if structure_bytes is None or pdb_summary is None:
         return
 
-    # 表示するペプチド配列を rank 選択で決定
+    # 表示するペプチド配列を "Top candidate details" の Select rank から取得
     peptide_sequence: str | None = None
     selected_rank: int = 1
     if result_df is not None and pocket_centroid is not None and len(result_df) > 0:
-        max_rank = min(len(result_df), 10)
-        selected_rank = st.select_slider(
-            "表示するペプチド候補のランク",
-            options=list(range(1, max_rank + 1)),
-            value=1,
-            key="viewer_rank_selector",
-        )
-        row = result_df.iloc[selected_rank - 1]
+        raw_rank = st.session_state.get("viewer_selected_rank", 1)
+        # 範囲外のランク（別 Run 後の残留値）を安全にクランプ
+        selected_rank = max(1, min(int(raw_rank), len(result_df)))
+        rank_col = result_df["rank"] if "rank" in result_df.columns else None
+        if rank_col is not None:
+            matches = result_df[result_df["rank"] == selected_rank]
+            row = matches.iloc[0] if len(matches) > 0 else result_df.iloc[0]
+        else:
+            row = result_df.iloc[selected_rank - 1]
         seq = row["sequence"] if "sequence" in result_df.columns else None
         if seq and isinstance(seq, str):
             peptide_sequence = seq
