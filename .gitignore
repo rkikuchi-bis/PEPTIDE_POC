@@ -42,3 +42,7 @@ bin/
 
 # Claude Code memory
 .claude/
+
+# Demo videos
+*.mov
+*.mp4
