@@ -1,24 +1,27 @@
 """
-Phase A-1: BioPython ProtParam による科学的特徴量ベースの再スコアリング
+Multi-layer rescoring pipeline (Phase A-1 through B-2++).
 
-旧実装との対応：
-  charge_match_score    → 等電点 pI を用いた電荷マッチ（Kyte-Doolittle準拠）
-  hydrophobic_match_score → GRAVY（Grand Average of hYdropathicity）による疎水性マッチ
-  complexity_score      → 芳香族性・二次構造傾向・配列多様性による複雑性
-  stability_score       → 不安定性指数（Guruprasad et al., 1990）を追加
+Scoring layers:
+  Phase A-1  BioPython ProtParam  (pI, GRAVY, instability index, aromaticity)
+  Phase A-2  LightGBM ML model   (RCSB peptide complex dataset)
+  Phase B-2  ProteinMPNN          (structure-free, ideal α-helix backbone)
+  Phase B-2+ ProteinMPNN          (receptor-conditioned, pocket centroid + ideal helix)
+  Phase B-2++ ProteinMPNN         (receptor-conditioned + ESMFold predicted backbone)
 
-新規追加カラム：
+Output columns added:
   gravy, instability_index, isoelectric_point, aromaticity,
-  helix_fraction, turn_fraction, sheet_fraction, stability_score
+  helix_fraction, turn_fraction, sheet_fraction, molecular_weight,
+  charge_match_score, hydrophobic_match_score, stability_score, complexity_score,
+  rescoring_score, ml_score, proteinmpnn_score, final_score
 """
 from __future__ import annotations
 
 import math
 import os
+import re
 from typing import Dict
 
-# PyTorch と LightGBM の OpenMP 競合を回避するため最初に設定する
-# （torch / lightgbm のいずれのインポートより先に設定する必要がある）
+# Must be set before importing torch or lightgbm to avoid OpenMP thread conflicts
 os.environ.setdefault("OMP_NUM_THREADS", "1")
 os.environ.setdefault("LIGHTGBM_NUM_THREADS", "1")
 
@@ -36,6 +39,38 @@ from core.ml_scorer import is_model_available, score_with_ml
 _STANDARD_AA = set("ACDEFGHIKLMNPQRSTVWY")
 
 _PHYSIOLOGICAL_PH = 7.4  # ヒト生理的pH基準
+
+
+# ─────────────────────────────────────────────
+# Final score computation
+# ─────────────────────────────────────────────
+
+def _compute_final_score(
+    df: pd.DataFrame,
+    ml_available: bool,
+    mpnn_available: bool = True,
+) -> pd.Series:
+    """Weighted combination of available scoring signals; weights adapt to present modules."""
+    if ml_available and mpnn_available:
+        return (
+            0.15 * df["gen_score"]
+            + 0.15 * df["property_score"]
+            + 0.25 * df["rescoring_score"]
+            + 0.25 * df["ml_score"]
+            + 0.20 * df["proteinmpnn_score"]
+        ).round(4)
+    if ml_available:
+        return (
+            0.20 * df["gen_score"]
+            + 0.20 * df["property_score"]
+            + 0.30 * df["rescoring_score"]
+            + 0.30 * df["ml_score"]
+        ).round(4)
+    return (
+        0.30 * df["gen_score"]
+        + 0.30 * df["property_score"]
+        + 0.40 * df["rescoring_score"]
+    ).round(4)
 
 
 # ─────────────────────────────────────────────
@@ -239,8 +274,16 @@ def _build_notes(
     return "; ".join(notes)
 
 
+def _update_mpnn_note(note: str, esmfold_used: bool) -> str:
+    """Replace or append the MPNN backbone tag in a rescoring note string."""
+    tag = "ESMFold+receptor" if esmfold_used else "helix+receptor"
+    if re.search(r"; MPNN\([^)]+\)", note):
+        return re.sub(r"; MPNN\([^)]+\)", f"; MPNN({tag})", note)
+    return f"{note}; MPNN({tag})"
+
+
 # ─────────────────────────────────────────────
-# メイン関数
+# Main functions
 # ─────────────────────────────────────────────
 
 def rescore_candidates(
@@ -351,12 +394,11 @@ def rescore_candidates(
     )
 
     if use_receptor_mpnn:
-        # Phase B-2+: 受容体条件付き（ヘリックス骨格）でスコアリング
-        # ESMFold 骨格は候補数が多いためここでは使わない。
-        # apply_esmfold_rescoring() が diversity 後の少数候補に対して実行する。
-        import os as _os
-        _orig = _os.environ.get("PEPFOLD_MAX_SEQS")
-        _os.environ["PEPFOLD_MAX_SEQS"] = "0"
+        # Phase B-2+: receptor-conditioned scoring with ideal helix backbone.
+        # ESMFold backbone is deferred to apply_esmfold_rescoring() which runs
+        # after diversity filtering on a smaller candidate set.
+        _orig = os.environ.get("PEPFOLD_MAX_SEQS")
+        os.environ["PEPFOLD_MAX_SEQS"] = "0"
         try:
             mpnn_scores, esmfold_flags = score_sequences_with_receptor(
                 out["sequence"].tolist(),
@@ -366,9 +408,9 @@ def rescore_candidates(
             )
         finally:
             if _orig is None:
-                _os.environ.pop("PEPFOLD_MAX_SEQS", None)
+                os.environ.pop("PEPFOLD_MAX_SEQS", None)
             else:
-                _os.environ["PEPFOLD_MAX_SEQS"] = _orig
+                os.environ["PEPFOLD_MAX_SEQS"] = _orig
         out["proteinmpnn_receptor_conditioned"] = True
         out["esmfold_backbone_used"] = esmfold_flags
     else:
@@ -380,46 +422,18 @@ def rescore_candidates(
     out["proteinmpnn_score"] = [round(s, 4) for s in mpnn_scores]
     out["proteinmpnn_score_available"] = mpnn_available
 
-    # rescoring_notes に MPNN 骨格モードを付記する
-    esmfold_col = out.get("esmfold_backbone_used", False)
+    # Append MPNN backbone mode tag to rescoring notes
     if use_receptor_mpnn:
-        def _append_mpnn_note(row_idx: int, note: str) -> str:
-            if isinstance(esmfold_col, bool):
-                used = esmfold_col
-            else:
-                used = bool(esmfold_col.iloc[row_idx])
-            tag = "ESMFold+receptor" if used else "helix+receptor"
-            return f"{note}; MPNN({tag})"
-
+        esmfold_col = out.get("esmfold_backbone_used", False)
         out["rescoring_notes"] = [
-            _append_mpnn_note(i, n)
-            for i, n in enumerate(out["rescoring_notes"])
+            _update_mpnn_note(
+                note,
+                esmfold_col if isinstance(esmfold_col, bool) else bool(esmfold_col.iloc[i]),
+            )
+            for i, note in enumerate(out["rescoring_notes"])
         ]
 
-    # 最終統合スコア（利用可能なスコアに応じて重み自動切替）
-    if ml_available and mpnn_available:
-        # ML + ProteinMPNN 両方あり
-        out["final_score"] = (
-            0.15 * out["gen_score"]
-            + 0.15 * out["property_score"]
-            + 0.25 * out["rescoring_score"]
-            + 0.25 * out["ml_score"]
-            + 0.20 * out["proteinmpnn_score"]
-        ).round(4)
-    elif ml_available:
-        out["final_score"] = (
-            0.20 * out["gen_score"]
-            + 0.20 * out["property_score"]
-            + 0.30 * out["rescoring_score"]
-            + 0.30 * out["ml_score"]
-        ).round(4)
-    else:
-        out["final_score"] = (
-            0.30 * out["gen_score"]
-            + 0.30 * out["property_score"]
-            + 0.40 * out["rescoring_score"]
-        ).round(4)
-
+    out["final_score"] = _compute_final_score(out, ml_available, mpnn_available)
     return out
 
 
@@ -457,36 +471,12 @@ def apply_esmfold_rescoring(
     out["proteinmpnn_score"] = [round(s, 4) for s in mpnn_scores]
     out["esmfold_backbone_used"] = esmfold_flags
 
-    # rescoring_notes の MPNN タグを更新する
-    def _update_note(note: str, used: bool) -> str:
-        # 既存の MPNN(...) タグを置換（なければ追記）
-        import re
-        tag = "ESMFold+receptor" if used else "helix+receptor"
-        if re.search(r"; MPNN\([^)]+\)", note):
-            return re.sub(r"; MPNN\([^)]+\)", f"; MPNN({tag})", note)
-        return f"{note}; MPNN({tag})"
-
     if "rescoring_notes" in out.columns:
         out["rescoring_notes"] = [
-            _update_note(note, bool(used))
+            _update_mpnn_note(note, bool(used))
             for note, used in zip(out["rescoring_notes"], esmfold_flags)
         ]
 
-    # final_score を再計算する
     ml_available = is_model_available()
-    if ml_available:
-        out["final_score"] = (
-            0.15 * out["gen_score"]
-            + 0.15 * out["property_score"]
-            + 0.25 * out["rescoring_score"]
-            + 0.25 * out["ml_score"]
-            + 0.20 * out["proteinmpnn_score"]
-        ).round(4)
-    else:
-        out["final_score"] = (
-            0.30 * out["gen_score"]
-            + 0.30 * out["property_score"]
-            + 0.40 * out["rescoring_score"]
-        ).round(4)
-
+    out["final_score"] = _compute_final_score(out, ml_available, mpnn_available=True)
     return out

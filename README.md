@@ -1,140 +1,142 @@
 # 🧬 Peptide Discovery PoC
 
-**AI-assisted peptide candidate generation and scoring for early drug discovery**  
-**創薬初期の仮説生成を支援する、AIペプチド候補設計・スコアリングツール**
+**AI-assisted peptide candidate generation and scoring for early drug discovery**
+
+![Python](https://img.shields.io/badge/python-3.11%20%7C%203.12-blue?logo=python&logoColor=white)
+![Streamlit](https://img.shields.io/badge/Streamlit-1.45%2B-FF4B4B?logo=streamlit&logoColor=white)
+![License](https://img.shields.io/badge/license-MIT-green)
+![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux-lightgrey)
 
 ---
 
-## Overview / 概要
+## What This Is
 
-**[English]**  
-Peptide Discovery PoC is a Streamlit-based web application that takes a protein pocket structure (PDB/mmCIF) as input and generates, filters, scores, and visualizes binding peptide candidates. Designed as a hypothesis-generation tool for early-stage drug discovery, it integrates multiple scoring layers — from physicochemical properties to machine learning and structural design — and provides Japanese-language explanations of each candidate's rationale.
+A Streamlit web application that takes a protein pocket structure (PDB/mmCIF) as input and generates, filters, scores, and visualizes binding peptide candidates.
 
-**[日本語]**  
-Peptide Discovery PoC は、タンパク質ポケット構造（PDB/mmCIF）を入力として、結合候補ペプチド配列を生成・フィルタ・スコアリング・可視化する Streamlit 製 Web アプリです。創薬初期の仮説生成ツールとして、物性スコアから機械学習・構造解析まで複数のスコアリング層を統合し、各候補の推薦理由を日本語で出力します。
+**Intended use:** Hypothesis generation at the start of a drug discovery campaign — before running expensive wet-lab assays.
 
----
-
-## Key Features / 主な機能
-
-| Feature | Description |
-|---|---|
-| **Simple / Expert mode** | Simple: 構造をアップロードして ▶ Run だけ。Expert: 全パラメータ手動制御 |
-| **Structure Input** | ローカル PDB/mmCIF アップロード または RCSB PDB から直接検索・ダウンロード |
-| **Pocket Analysis** | Manual residue range または Ligand neighborhood（リガンド自動検出） |
-| **Candidate Generation** | ポケット電荷・疎水性バイアス付きランダム配列生成 |
-| **Multi-layer Scoring** | ProtParam (A-1) → LightGBM ML (A-2) → ProteinMPNN (B-2/B-2+/B-2++) → Vina Docking (B-1) |
-| **Selectivity Score** | ターゲット vs. オフターゲットの結合選択性スコア（Phase C-1）|
-| **Off-target DB** | 14ターゲット対応の既知 Off-target データベース内蔵（EGFR, hERG, CYP3A4 等）|
-| **Explainability** | 各候補に対する日本語推薦理由（pI / GRAVY / 安定性 / ML / MPNN / ドッキング統合）|
-| **3D Visualization** | py3Dmol インタラクティブビューア（ポケット・リガンド・ペプチド候補を色分け表示）|
-| **CSV Export** | 全スコアを含む結果テーブルを `outputs/` に保存 |
+**Key design decisions:**
+- **Layered scoring**: physics → ML → generative structure models → docking. Each layer refines the ranking without blocking earlier results.
+- **Graceful degradation**: every optional module (ML, ProteinMPNN, ESMFold, Vina) has a fallback so the app works with zero local setup.
+- **Selectivity-first**: built-in off-target database lets you penalize promiscuous binders at design time.
 
 ---
 
-## Scoring Pipeline / スコアリングパイプライン
+## Demo
+
+> Try it with the HIV protease structure **1HSG** from RCSB PDB — no local files needed.
+
+**Simple mode (recommended first run):**
+1. Select **Simple** mode in the sidebar
+2. Search RCSB: type `HIV protease` → click **Search RCSB**
+3. Select `1HSG` → **Use selected structure**
+4. Chain A and Ligand MK1 are auto-recommended
+5. Click **▶ Run** — ranked candidates, scores, 3D viewer, and Japanese-language explanations appear
+
+**Expert mode** unlocks manual control over generation count, diversity filter, docking, and selectivity scoring.
+
+---
+
+## Scoring Pipeline
 
 ```
-Candidate Generation  (pocket charge/hydrophobicity biased random)
-  ↓
-Filter  (charge / hydrophobicity / repeat residue / deduplication)
-  ↓
-Rescoring
-  ├── Phase A-1: BioPython ProtParam  (pI, GRAVY, instability index, aromaticity)
-  ├── Phase A-2: LightGBM ML model   (RCSB peptide complex data, CV AUC = 0.891)
-  └── Phase B-2/B-2+/B-2++: ProteinMPNN
-        B-2:   structure-free (ideal α-helix surrogate)
-        B-2+:  receptor-conditioned (pocket centroid + ideal helix)
-        B-2++: receptor-conditioned + ESMFold predicted backbone
-  ↓
-Diversity Filter  (Hamming distance-based greedy selection)
-  ↓
-ESMFold Re-scoring  (B-2++: top diverse candidates re-scored with predicted backbone)
-  ↓
-Motif Comparison  (identity / k-mer Jaccard / charge pattern similarity)
-  ↓
-Selectivity Score (Phase C-1)  [optional, Expert mode]
-  selective_final_score = final_score + λ × selectivity_score  (default λ = 0.3)
-  ↓
-Explainability (Direction A)  — 日本語推薦理由
-  ↓
-Optional Docking (Phase B-1): AutoDock Vina  [local only, Expert mode]
+Input: protein pocket structure (PDB / mmCIF)
+  │
+  ▼
+Candidate Generation
+  Biased random sampling (pocket charge + hydrophobicity weighted)
+  — or — Variant generation (single-mutant / alanine scan / truncation)
+  │
+  ▼
+Property Filters
+  Length · Net charge · Avg hydrophobicity · Repeat-residue · Deduplication
+  │
+  ▼
+Multi-layer Rescoring
+  Phase A-1  BioPython ProtParam    pI · GRAVY · instability index · aromaticity
+  Phase A-2  LightGBM ML model      CV AUC = 0.891 (RCSB peptide complex dataset)
+  Phase B-2  ProteinMPNN            structure-free (ideal α-helix backbone)
+  Phase B-2+ ProteinMPNN            receptor-conditioned (pocket centroid + ideal helix)
+  Phase B-2++ ProteinMPNN           receptor-conditioned + ESMFold predicted backbone
+  │
+  ▼
+Diversity Filter   Hamming distance-based greedy selection
+  │
+  ▼
+ESMFold Re-scoring (B-2++: top diverse candidates only)
+  │
+  ▼
+Motif Comparison   Sequence identity · k-mer Jaccard · charge pattern similarity
+  │
+  ▼
+Optional post-processing
+  Phase C-1  Selectivity score      rescoring diff (target − off-target)
+  Phase B-1  AutoDock Vina          rigid/flexible docking  [local only]
+  Phase C-2  Docking selectivity    Vina score diff (off-target − target)  [local only]
+  │
+  ▼
+Explainability (Direction A)
+  Japanese + English natural-language rationale for each top candidate
 ```
 
 ---
 
-## Quick Start / デモ
-
-> Try with the classic HIV protease structure **1HSG** from RCSB PDB.  
-> RCSB から **1HSG**（HIVプロテアーゼ）を検索してそのまま試せます。
-
-### Simple mode（推奨）
-
-1. サイドバーで **Simple** モードを選択
-2. **"Search RCSB by target"** → `HIV protease` と入力 → **Search RCSB**
-3. `1HSG` を選択 → **Use selected structure**
-4. Chain と Ligand が自動推奨される（Chain A / Ligand MK1）
-5. **▶ Run** を押す
-6. ランク付き候補・スコア・3D ビューア・推薦理由を確認
-
-### Expert mode（全機能）
-
-- Pocket bias / Generation 数 / Diversity filter / Docking / Selectivity を手動制御
-- Known off-target DB から選択し、選択性スコアを計算
-
----
-
-## Architecture / アーキテクチャ
+## Architecture
 
 ```
 peptide_poc/
-├── app.py                    # 薄いオーケストレーター（~60行）
-├── core/
-│   ├── generator.py          # バイアス付きランダム配列生成
-│   ├── filters.py            # 物性フィルタ
-│   ├── rescorer.py           # マルチレイヤースコアリング統合
-│   ├── ml_scorer.py          # LightGBM 推論（Phase A-2）
-│   ├── proteinmpnn.py        # ProteinMPNN スコアリング（Phase B-2/B-2+/B-2++）
-│   ├── pepfold.py            # ESMFold ローカル推論（Phase B-2++）
-│   ├── docking.py            # AutoDock Vina ドッキング（Phase B-1、ローカルのみ）
-│   ├── selectivity.py        # 選択性スコア（Phase C-1）
-│   ├── explainer.py          # 日本語推薦理由生成（Direction A）
-│   ├── helix_utils.py        # 理想αヘリックス座標生成（3D Viewer 用）
-│   ├── offtarget_db.py       # 既知 Off-target DB（14ターゲット）
-│   ├── diversity.py          # Hamming 距離多様性制御
-│   ├── pdb_utils.py          # PDB/mmCIF パース・ポケット解析
-│   ├── motif_compare.py      # 既知モチーフ比較
-│   ├── pipeline.py           # パイプラインオーケストレーター
-│   ├── structure_scorer.py   # 構造優先度スコアリング
-│   ├── rcsb_client.py        # RCSB API クライアント
-│   └── utils.py              # CSV 保存ユーティリティ
-├── ui/
-│   ├── sidebar.py            # render_sidebar() → dict
-│   ├── results.py            # render_results()
-│   └── structure_viewer.py   # py3Dmol 3D ビューア + ペプチド重畳
+├── app.py                        # Thin orchestrator (~70 lines)
+├── core/                         # Pure Python — no Streamlit dependency
+│   ├── pipeline.py               # End-to-end orchestration
+│   ├── generator.py              # Pocket-biased sequence generation
+│   ├── variant_generator.py      # Mutation / truncation variants
+│   ├── filters.py                # Property filters
+│   ├── rescorer.py               # Multi-layer scoring (A-1 → B-2++)
+│   ├── ml_scorer.py              # LightGBM inference (Phase A-2)
+│   ├── proteinmpnn.py            # ProteinMPNN subprocess wrapper (B-2/B-2+/B-2++)
+│   ├── pepfold.py                # ESMFold backbone prediction (B-2++)
+│   ├── docking.py                # AutoDock Vina wrapper (B-1)
+│   ├── selectivity.py            # Selectivity scores (C-1 / C-2)
+│   ├── explainer.py              # Japanese / English explanations (Direction A)
+│   ├── diversity.py              # Hamming distance diversity filter
+│   ├── motif_compare.py          # Known-motif comparison
+│   ├── pdb_utils.py              # PDB / mmCIF parsing & pocket analysis
+│   ├── rcsb_client.py            # RCSB PDB REST API client
+│   ├── offtarget_db.py           # Built-in off-target DB (14 targets)
+│   ├── admet_scorer.py           # Heuristic bioactivity scoring
+│   ├── helix_utils.py            # Ideal α-helix coordinate generation
+│   ├── structure_scorer.py       # RCSB result ranking
+│   └── utils.py                  # CSV export
+├── ui/                           # Streamlit UI modules
+│   ├── sidebar.py                # render_sidebar() → params dict
+│   ├── actions.py                # Post-pipeline action panels
+│   ├── results.py                # Results table & candidate detail panel
+│   └── structure_viewer.py       # py3Dmol 3D visualization
 ├── models/
-│   ├── peptide_classifier.joblib    # 学習済み LightGBM モデル
-│   └── proteinmpnn/v_48_020.pt      # ProteinMPNN 重み (6.4 MB)
+│   ├── peptide_classifier.joblib # Trained LightGBM weights (Phase A-2)
+│   └── proteinmpnn/v_48_020.pt   # ProteinMPNN weights (6.4 MB)
 ├── scripts/
-│   ├── prepare_dataset.py    # 学習データ生成（RCSB API）
-│   ├── train_classifier.py   # LightGBM 学習スクリプト
-│   ├── mpnn_scorer.py        # ProteinMPNN スコアラー（サブプロセス用）
-│   ├── mpnn_scorer_receptor.py  # 受容体条件付き ProteinMPNN
-│   └── esmfold_scorer.py     # ESMFold 推論スクリプト
+│   ├── prepare_dataset.py        # RCSB training data pipeline
+│   ├── train_classifier.py       # LightGBM 5-fold CV training
+│   ├── mpnn_scorer.py            # ProteinMPNN subprocess runner
+│   ├── mpnn_scorer_receptor.py   # Receptor-conditioned MPNN runner
+│   └── esmfold_scorer.py         # ESMFold inference runner
 └── data/
-    └── peptide_dataset.csv   # 学習用データセット（陽性 485 件 + 陰性 500 件）
+    └── peptide_dataset.csv       # 485 positive + 500 negative examples
 ```
+
+**Design note:** ProteinMPNN and ESMFold run as subprocesses to avoid an OpenMP thread conflict between PyTorch and LightGBM on Apple Silicon (MPS).
 
 ---
 
-## Installation / セットアップ
+## Installation
 
-### Requirements / 必要環境
+### Requirements
 
-- Python 3.11 または 3.12
-- [uv](https://github.com/astral-sh/uv)（パッケージマネージャー）
+- Python 3.11 or 3.12
+- [uv](https://github.com/astral-sh/uv) package manager
 
-### Local setup / ローカル実行
+### Quick start
 
 ```bash
 git clone https://github.com/rkikuchi-bis/PEPTIDE_POC.git
@@ -145,74 +147,35 @@ uv sync
 uv run streamlit run app.py
 ```
 
-### Optional: AutoDock Vina（Phase B-1）
+### Optional: AutoDock Vina (Phase B-1)
 
 ```bash
-# macOS (arm64)
+# macOS
 brew install openbabel
 
-# Vina バイナリを bin/vina に配置
+# Download the Vina binary for your platform and place it at bin/vina
 # https://github.com/ccsb-scripps/AutoDock-Vina/releases
 ```
 
-### Optional: ESMFold（Phase B-2++）
+### Optional: ESMFold (Phase B-2++)
 
 ```bash
-# fair-esm と依存パッケージのインストール（uv 経由）
-# モデルは初回実行時に自動ダウンロード（~2GB）
+# Dependencies are included in pyproject.toml.
+# The model checkpoint (~2 GB) is downloaded automatically on first use to:
 # ~/.cache/torch/hub/checkpoints/esmfold_3B_v1.pt
+#
+# Control the number of sequences sent to ESMFold:
+export PEPFOLD_MAX_SEQS=30  # default; set to 0 to disable
 ```
 
----
+### Streamlit Cloud deployment
 
-## Scoring Details / スコアリング詳細
+The `requirements.txt` targets Streamlit Cloud (CPU-only, no Vina or ESMFold):
 
-### Phase A-1: BioPython ProtParam
-
-| Feature | Usage |
-|---|---|
-| Isoelectric point (pI) | ポケット電荷との補完性スコア |
-| GRAVY | ポケット疎水性とのマッチスコア |
-| Instability index | in vivo 安定性推定スコア |
-| Aromaticity, helix fraction | 配列複雑性スコア |
-
-### Phase A-2: ML Scoring (LightGBM)
-
-- 学習データ: RCSB PDB ペプチド複合体 陽性 485 件 + ランダム陰性 500 件
-- 5-fold CV AUC: **0.891** / Holdout AUC: **0.881**
-- 特徴量: Phase A-1 全特徴量 + 長さ・電荷・疎水性
-
-### Phase B-2 / B-2+ / B-2++: ProteinMPNN
-
-| Mode | Description |
-|---|---|
-| B-2 | 構造フリー（理想αヘリックス骨格でスコア） |
-| B-2+ | 受容体条件付き（ポケット centroid に配置した理想ヘリックス） |
-| B-2++ | 受容体条件付き + ESMFold 予測骨格（diversity 後の少数候補に適用） |
-
-### Phase B-1: AutoDock Vina（ローカル限定）
-
-- ≤5 残基: 柔軟ドッキング / ≥6 残基: 剛体ドッキング（自動切り替え）
-- obabel 経由で PDB → PDBQT 変換
-- スコア単位: kcal/mol（負値が強い結合を示す）
-
-### Phase C-1: Selectivity Score
-
+```bash
+# Streamlit Cloud reads requirements.txt automatically.
+# ESMFold and AutoDock Vina are disabled in cloud environments.
 ```
-selectivity_score        = rescoring_score(target) − rescoring_score(off-target)
-selective_final_score    = final_score + λ × selectivity_score   (default λ = 0.3)
-```
-
-- 🟢 selectivity ≥ 0.10: ターゲット選択的
-- 🟡 −0.05 < selectivity < 0.10: 中程度
-- 🔴 selectivity ≤ −0.05: オフターゲット親和性リスク
-
----
-
-## Cloud Deployment / クラウドデプロイ
-
-Streamlit Cloud に `requirements.txt` でデプロイ可能です。  
-ESMFold と AutoDock Vina はリソース制約により自動無効化されます。
 
 | Feature | Streamlit Cloud | Local |
 |---|---|---|
@@ -220,28 +183,83 @@ ESMFold と AutoDock Vina はリソース制約により自動無効化されま
 | ProtParam + ML scoring | ✅ | ✅ |
 | ProteinMPNN B-2 / B-2+ | ✅ (CPU) | ✅ (MPS) |
 | Selectivity + Explainability | ✅ | ✅ |
-| AutoDock Vina docking (B-1) | ❌ | ✅ |
+| AutoDock Vina (B-1) | ❌ | ✅ |
 | ESMFold backbone (B-2++) | ❌ | ✅ |
 
 ---
 
-## Limitations / 制約事項
+## Scoring Details
 
-**[English]**  
-This is a proof-of-concept tool for hypothesis generation. Candidate sequences are generated by biased random sampling, not structural design. Scores are for relative ranking purposes and do not guarantee actual binding activity. Selectivity scores based on physicochemical differences have limited resolution for closely related protein families (Phase C-2 docking-based selectivity is planned for higher resolution). All results should be validated by experimental assay.
+### Phase A-1: BioPython ProtParam
 
-**[日本語]**  
-本ツールは仮説生成のための PoC（概念実証）です。候補配列はバイアス付きランダム生成であり、構造ベース設計ではありません。スコアは相対的なランキング指標であり、実際の結合活性を保証するものではありません。物性差分ベースの選択性スコアは、同一ファミリー内タンパク質の識別精度に限界があります（ドッキングスコア差分ベースの Phase C-2 を将来計画）。実験による検証が必要です。
+| Feature | Scoring rationale |
+|---|---|
+| Isoelectric point (pI) | Complementarity with pocket charge at physiological pH 7.4 |
+| GRAVY (Kyte-Doolittle) | Match to pocket hydrophobicity; sigmoid-normalized |
+| Instability index | In vivo stability estimate; threshold at 40 |
+| Aromaticity | π-π stacking potential (F/W/Y fraction) |
+| Helix fraction | α-helix propensity; peak reward near 35% |
+
+### Phase A-2: LightGBM ML Model
+
+- **Training data:** RCSB PDB peptide complexes — 485 positive + 500 negative examples
+- **Validation:** 5-fold CV AUC **0.891** / holdout AUC **0.881**
+- **Features:** all Phase A-1 physicochemical descriptors + length, charge, hydrophobicity
+
+### Phase B-2 / B-2+ / B-2++: ProteinMPNN
+
+| Mode | Backbone | Receptor context |
+|---|---|---|
+| B-2 | Ideal α-helix | None |
+| B-2+ | Ideal α-helix | Pocket centroid |
+| B-2++ | ESMFold predicted | Pocket centroid |
+
+NLL scores from ProteinMPNN are converted to a [0, 1] range via sigmoid normalization (scale = 3.3).
+
+### Phase B-1: AutoDock Vina
+
+- **≤ 5 residues:** flexible docking (side-chain rotamers sampled)
+- **≥ 6 residues:** rigid docking (backbone locked)
+- **Units:** kcal/mol — more negative = stronger predicted binding
+
+### Phase C-1 / C-2: Selectivity
+
+```
+C-1  selectivity_score     = rescoring(target)  − rescoring(off-target)
+C-2  docking_selectivity   = docking(off-target) − docking(target)   [more positive = more selective]
+
+selective_final_score = final_score + λ × selectivity_score   (default λ = 0.3)
+```
+
+- 🟢 selectivity ≥ 0.10 — target-selective
+- 🟡 −0.05 < selectivity < 0.10 — moderate
+- 🔴 selectivity ≤ −0.05 — off-target affinity risk
 
 ---
 
-## Tech Stack / 使用技術
+## Limitations
+
+This is a proof-of-concept tool for hypothesis generation.
+
+- Sequences are generated by biased random sampling, not structure-based design.
+- Scores are relative rankings; they do not predict binding affinity in absolute terms.
+- Physicochemical-based selectivity (C-1) has limited resolution for closely related protein families.
+- All results require experimental validation.
+
+---
+
+## Tech Stack
 
 `Python 3.11` · `Streamlit` · `BioPython` · `LightGBM` · `PyTorch (MPS)` · `ProteinMPNN` · `ESMFold (fair-esm)` · `AutoDock Vina` · `RDKit` · `py3Dmol` · `RCSB PDB API`
 
 ---
 
-## Author / 著者
+## License
 
-Developed as a portfolio project demonstrating multi-layer AI scoring in early-stage drug discovery.  
-創薬初期における多段階 AI スコアリングのポートフォリオとして開発。
+MIT — see [LICENSE](LICENSE).
+
+---
+
+## Author
+
+Developed as a portfolio project demonstrating multi-layer AI scoring for early-stage drug discovery.

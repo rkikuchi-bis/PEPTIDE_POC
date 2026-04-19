@@ -1,3 +1,6 @@
+"""Pocket-biased random peptide candidate generation."""
+from __future__ import annotations
+
 import random
 from typing import Dict, List
 
@@ -8,16 +11,18 @@ NEGATIVE = set("DE")
 HYDROPHOBIC = set("AILMFWVY")
 POLAR = set("STNQ")
 
+
 def _build_weighted_pool(
     pocket_charge: str,
     pocket_hydrophobicity: str,
     avoid_residues: List[str] | None = None,
 ) -> List[str]:
-    avoid_residues = set(avoid_residues or [])
+    """Build a sampling pool with residue weights biased toward the pocket environment."""
+    avoid = set(avoid_residues or [])
     pool: List[str] = []
 
     for aa in AMINO_ACIDS:
-        if aa in avoid_residues:
+        if aa in avoid:
             continue
 
         weight = 10
@@ -36,7 +41,13 @@ def _build_weighted_pool(
 
     return pool
 
-def _simple_gen_score(sequence: str, pocket_charge: str, pocket_hydrophobicity: str) -> float:
+
+def _simple_gen_score(
+    sequence: str,
+    pocket_charge: str,
+    pocket_hydrophobicity: str,
+) -> float:
+    """Heuristic score reflecting how well a sequence matches the pocket environment."""
     score = 0.5
 
     pos_count = sum(1 for x in sequence if x in POSITIVE)
@@ -56,6 +67,7 @@ def _simple_gen_score(sequence: str, pocket_charge: str, pocket_hydrophobicity: 
 
     return min(score, 0.99)
 
+
 def generate_candidates(
     n: int,
     min_len: int,
@@ -64,8 +76,9 @@ def generate_candidates(
     pocket_hydrophobicity: str = "medium",
     avoid_residues: List[str] | None = None,
 ) -> List[Dict]:
+    """Generate n random peptide sequences biased toward the given pocket properties."""
     if min_len > max_len:
-        raise ValueError("min_len must be <= max_len")
+        raise ValueError(f"min_len ({min_len}) must be <= max_len ({max_len})")
 
     pool = _build_weighted_pool(
         pocket_charge=pocket_charge,
@@ -74,16 +87,13 @@ def generate_candidates(
     )
 
     candidates: List[Dict] = []
-
     for _ in range(n):
         length = random.randint(min_len, max_len)
         seq = "".join(random.choice(pool) for _ in range(length))
-        gen_score = _simple_gen_score(seq, pocket_charge, pocket_hydrophobicity)
-
         candidates.append(
             {
                 "sequence": seq,
-                "gen_score": round(gen_score, 4),
+                "gen_score": round(_simple_gen_score(seq, pocket_charge, pocket_hydrophobicity), 4),
                 "source": "rule_based_v1",
             }
         )

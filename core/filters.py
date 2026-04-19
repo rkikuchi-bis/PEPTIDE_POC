@@ -1,9 +1,11 @@
+"""Physicochemical property computation and candidate filtering."""
 from __future__ import annotations
 
 from typing import Dict
 
 import pandas as pd
 
+# Normalized Eisenberg consensus hydrophobicity scale (0 = polar, 1 = most hydrophobic)
 HYDRO_SCALE: Dict[str, float] = {
     "A": 0.70, "C": 0.78, "D": 0.11, "E": 0.11, "F": 0.81,
     "G": 0.46, "H": 0.14, "I": 1.00, "K": 0.07, "L": 0.92,
@@ -16,18 +18,23 @@ CHARGE_MAP: Dict[str, int] = {
     "D": -1, "E": -1,
 }
 
+
 def calc_length(sequence: str) -> int:
     return len(sequence)
 
+
 def calc_net_charge(sequence: str) -> int:
     return sum(CHARGE_MAP.get(res, 0) for res in sequence)
+
 
 def calc_avg_hydrophobicity(sequence: str) -> float:
     if not sequence:
         return 0.0
     return sum(HYDRO_SCALE.get(res, 0.0) for res in sequence) / len(sequence)
 
+
 def has_excessive_repeat(sequence: str, max_repeat_residue: int = 2) -> bool:
+    """Return True if any single residue appears consecutively more than max_repeat_residue times."""
     if not sequence:
         return False
 
@@ -41,35 +48,31 @@ def has_excessive_repeat(sequence: str, max_repeat_residue: int = 2) -> bool:
             current = 1
     return False
 
-def _canonical_signature(sequence: str) -> str:
-    return sequence
 
 def add_basic_properties(df: pd.DataFrame) -> pd.DataFrame:
     out = df.copy()
     out["length"] = out["sequence"].apply(calc_length)
     out["net_charge"] = out["sequence"].apply(calc_net_charge)
     out["avg_hydrophobicity"] = out["sequence"].apply(calc_avg_hydrophobicity)
-    out["duplicate_key"] = out["sequence"].apply(_canonical_signature)
+    out["duplicate_key"] = out["sequence"]
     return out
+
 
 def _compute_property_score(row: pd.Series) -> float:
     score = 1.0
 
     if row["length"] < 6 or row["length"] > 16:
         score -= 0.2
-
     if abs(row["net_charge"]) > 4:
         score -= 0.2
-
     if row["avg_hydrophobicity"] > 0.70:
         score -= 0.2
-
     if not row["repeat_ok"]:
         score -= 0.3
 
     score += min(float(row.get("gen_score", 0.0)) * 0.2, 0.2)
-
     return max(min(score, 1.0), 0.0)
+
 
 def apply_filters(
     df: pd.DataFrame,
@@ -80,6 +83,7 @@ def apply_filters(
     max_repeat_residue: int = 2,
     remove_near_duplicates: bool = True,
 ) -> pd.DataFrame:
+    """Apply length, charge, hydrophobicity, repeat-residue, and deduplication filters."""
     out = df.copy()
 
     out["repeat_ok"] = ~out["sequence"].apply(
@@ -92,11 +96,7 @@ def apply_filters(
     out = out[out["repeat_ok"]]
 
     if remove_near_duplicates:
-        out["duplicate_flag"] = out.duplicated(subset=["duplicate_key"], keep="first")
-        out = out[~out["duplicate_flag"]]
-    else:
-        out["duplicate_flag"] = False
+        out = out[~out.duplicated(subset=["duplicate_key"], keep="first")]
 
     out["property_score"] = out.apply(_compute_property_score, axis=1)
-
     return out.reset_index(drop=True)
